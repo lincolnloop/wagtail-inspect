@@ -1,0 +1,31 @@
+{% load wagtailcore_tags %}
+
+<footer class="border-t border-zinc-200 bg-white px-6 py-16 md:px-8 lg:px-12">
+  <div class="mx-auto max-w-6xl">
+    <div class="grid gap-12 md:grid-cols-2 lg:grid-cols-12">
+      <div class="lg:col-span-4">
+        <a href="/" class="inline-block">
+          <span class="text-xl text-zinc-900">{{ value.brand_text }}</span>
+        </a>
+        {% if value.description %}
+          <p class="mt-4 max-w-xs text-sm leading-relaxed text-zinc-600">{{ value.description }}</p>
+        {% endif %}
+      </div>
+      {% for column in value.columns %}
+        <div class="lg:col-span-2">
+          <h4 class="text-sm font-semibold uppercase tracking-wider text-zinc-900">{{ column.title }}</h4>
+          <ul class="mt-4 space-y-3">
+            {% for link in column.links %}
+              <li>
+                <a href="{{ link.url }}" class="text-sm text-zinc-600 transition-colors hover:text-zinc-900">{{ link.label }}</a>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    </div>
+    <div class="mt-12 border-t border-zinc-200 pt-8">
+      <p class="text-center text-sm text-zinc-600">{{ value.copyright }}</p>
+    </div>
+  </div>
+</footer>

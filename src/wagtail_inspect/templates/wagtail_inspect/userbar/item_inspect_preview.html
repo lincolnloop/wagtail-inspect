@@ -1,0 +1,50 @@
+{% extends "wagtailadmin/userbar/item_base.html" %}
+
+{% load i18n wagtailadmin_tags %}
+
+{% block item_content %}
+  {{ inspect_preview_context|json_script:"inspect-preview-configuration" }}
+  <div data-controller="wagtail-inspect-userbar">
+    <button type="button" id="inspect-blocks-trigger" role="menuitem" data-wagtail-inspect-userbar-target="trigger">
+      {% icon name="crosshairs" classname="w-action-icon" %} {% trans "Inspect blocks" %}
+    </button>
+  </div>
+  {% comment %} Load assets dynamically — required because: 1. Userbar content is cloned from
+<template>
+  into shadow DOM by Wagtail's userbar.ts 2.
+  <script src="...">
+    and <link> tags don't execute/apply when cloned from templates
+       3. Inline scripts DO execute, so we use one to dynamically load our external assets
+
+       preview-inspect.css loads first (non-blocking), then
+       inspect-core.js → inspect-augment.js → userbar-inspect.js in order
+       (each depends on the previous: WagtailInspectMode → WagtailInspectAugment).
+{% endcomment %}
+<script>
+       (function() {
+         function loadStylesheet(url) {
+           if (document.querySelector('link[href="' + url + '"]')) return;
+           var l = document.createElement('link');
+           l.rel = 'stylesheet';
+           l.href = url;
+           document.head.appendChild(l);
+         }
+         function loadScript(url, callback) {
+           if (document.querySelector('script[src="' + url + '"]')) {
+             if (callback) callback();
+             return;
+           }
+           var s = document.createElement('script');
+           s.src = url;
+           if (callback) s.onload = callback;
+           document.head.appendChild(s);
+         }
+         loadStylesheet('{{ css_url }}');
+         loadScript('{{ core_js_url }}', function() {
+           loadScript('{{ augment_js_url }}', function() {
+             loadScript('{{ userbar_js_url }}');
+           });
+         });
+       })();
+</script>
+{% endblock item_content %}

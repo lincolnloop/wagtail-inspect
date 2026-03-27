@@ -1,0 +1,37 @@
+{% load wagtailcore_tags wagtailimages_tags %}
+
+<section class="py-20 px-6 md:px-8 lg:px-12 {% if value.background == 'surface' %}bg-zinc-50{% elif value.background == 'secondary' %}bg-zinc-100{% else %}bg-white{% endif %}">
+  <div class="mx-auto max-w-6xl">
+    <div class="grid items-center gap-12 lg:grid-cols-2">
+      {% if value.image_position == "left" %}
+        <div class="overflow-hidden rounded-2xl">
+          {% image value.image.image fill-800x600 class="h-auto w-full object-cover" %}
+        </div>
+        <div class="flex flex-col justify-center">
+          {% if value.badge %}
+            <span class="mb-4 inline-block rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-wider bg-orange-50 text-orange-600">{{ value.badge }}</span>
+          {% endif %}
+          <h2 class="text-3xl text-zinc-900 md:text-4xl">{{ value.headline }}</h2>
+          <p class="mt-4 text-lg leading-relaxed text-zinc-600">{{ value.description }}</p>
+          {% if value.cta %}
+            <div class="mt-8">{% include_block value.cta %}</div>
+          {% endif %}
+        </div>
+      {% else %}
+        <div class="flex flex-col justify-center">
+          {% if value.badge %}
+            <span class="mb-4 inline-block rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-wider bg-orange-50 text-orange-600">{{ value.badge }}</span>
+          {% endif %}
+          <h2 class="text-3xl text-zinc-900 md:text-4xl">{{ value.headline }}</h2>
+          <p class="mt-4 text-lg leading-relaxed text-zinc-600">{{ value.description }}</p>
+          {% if value.cta %}
+            <div class="mt-8">{% include_block value.cta %}</div>
+          {% endif %}
+        </div>
+        <div class="overflow-hidden rounded-2xl">
+          {% image value.image.image width-800 class="h-auto w-full object-cover" %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</section>

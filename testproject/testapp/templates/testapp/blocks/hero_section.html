@@ -1,0 +1,16 @@
+{% load wagtailcore_tags %}
+
+<section class="py-20 text-center max-sm:px-6">
+  {% if value.heading %}<h1 class="text-5xl font-bold tracking-tight text-zinc-900">{{ value.heading }}</h1>{% endif %}
+  {% if value.subheading %}<p class="mt-4 text-xl text-zinc-500">{{ value.subheading }}</p>{% endif %}
+  {% if value.body %}
+    <div class="prose prose-zinc mx-auto mt-6 text-left">{% include_block value.body %}</div>
+  {% endif %}
+  {% if value.buttons %}
+    <div class="mt-8 flex flex-wrap justify-center gap-4">
+      {% for button in value.buttons %}
+        {% include_block button %}
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>

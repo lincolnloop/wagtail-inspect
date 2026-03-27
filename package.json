@@ -1,0 +1,17 @@
+{
+  "name": "wagtail-inspect",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test tests/frontend",
+    "test:watch": "bun test --watch tests/frontend",
+    "lint": "oxlint --fix src/wagtail_inspect/static tests/frontend",
+    "lint:check": "oxlint src/wagtail_inspect/static tests/frontend",
+    "format": "oxfmt src/wagtail_inspect/static tests/frontend"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.8.4",
+    "oxfmt": "^0.42.0",
+    "oxlint": "^1.57.0"
+  }
+}

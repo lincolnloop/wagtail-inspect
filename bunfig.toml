@@ -1,0 +1,4 @@
+[test]
+preload = ["./tests/frontend/setup.js"]
+# Test files run concurrently by default (up to --max-concurrency, default 20).
+# --concurrent would also parallelise individual it() blocks within a file.

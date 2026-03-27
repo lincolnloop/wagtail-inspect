@@ -1,0 +1,4 @@
+{% with v=value.variant|default:"primary" s=value.size|default:"md" %}
+  <a href="{{ value.href }}"
+     class="inline-flex items-center justify-center rounded-lg font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-900 focus-visible:ring-offset-2 {% if v == 'primary' %}bg-orange-600 text-white shadow-sm hover:opacity-90 {% elif v == 'secondary' %}bg-zinc-200 text-zinc-900 hover:opacity-90 {% elif v == 'outline' %}border-2 border-zinc-900 text-zinc-900 hover:bg-zinc-900 hover:text-white {% else %}text-zinc-900 underline underline-offset-4 hover:opacity-70{% endif %} {% if s == 'sm' %}px-4 py-2 text-sm {% elif s == 'lg' %}px-8 py-4 text-lg {% else %}px-6 py-3 text-base{% endif %}">{{ value.label }}</a>
+{% endwith %}

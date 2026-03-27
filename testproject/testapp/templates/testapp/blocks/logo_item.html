@@ -1,0 +1,9 @@
+{% load wagtailimages_tags %}
+
+{% if value.href %}
+  <a href="{{ value.href }}" target="_blank" rel="noopener noreferrer">
+    {% image value.image height-160 class="h-[160px] w-auto object-contain opacity-50 grayscale transition-all hover:opacity-100 hover:grayscale-0" %}
+  </a>
+{% else %}
+  {% image value.image height-160 class="h-[160px] w-auto object-contain opacity-50 grayscale transition-all hover:opacity-100 hover:grayscale-0" %}
+{% endif %}

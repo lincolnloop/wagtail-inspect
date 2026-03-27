@@ -1,0 +1,58 @@
+{% load wagtailuserbar %}
+{% load wagtailcore_tags %}
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>
+      {% block title %}
+        Wagtail Inspect
+      {% endblock title %}
+    </title>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  </head>
+  <body class="bg-white text-gray-900 antialiased">
+    {% wagtailuserbar %}
+    <header class="border-b border-zinc-200 bg-white px-6 py-4 md:px-8 lg:px-12">
+      <div class="mx-auto max-w-6xl">
+        <a href="/" class="inline-block">
+          <span class="text-xl text-zinc-900">Wagtail Inspect</span>
+        </a>
+      </div>
+    </header>
+    <div class="mx-auto max-w-6xl py-12">
+      {% block content %}
+      {% endblock content %}
+    </div>
+    <footer class="border-t border-zinc-200 bg-white px-6 py-16 md:px-8 lg:px-12">
+      <div class="mx-auto max-w-6xl">
+        <div class="grid gap-12 md:grid-cols-2 lg:grid-cols-12">
+          <div class="lg:col-span-8">
+            <a href="/" class="inline-block">
+              <span class="text-xl text-zinc-900">Wagtail Inspect</span>
+            </a>
+            <p class="mt-4 max-w-xs text-sm leading-relaxed text-zinc-600">
+              Building the future of content management, one block at a time.
+            </p>
+          </div>
+          <div class="lg:col-span-4">
+            <h4 class="text-sm font-semibold uppercase tracking-wider text-zinc-900">Links</h4>
+            <ul class="mt-4 space-y-3">
+              <li>
+                <a href="https://wagtail.org" class="text-sm text-zinc-600 transition-colors hover:text-zinc-900">Wagtail</a>
+              </li>
+              <li>
+                <a href="https://github.com/lincolnloop/wagtail-inspect" class="text-sm text-zinc-600 transition-colors hover:text-zinc-900">Repository</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div class="mt-12 border-t border-zinc-200 pt-8">
+          <p class="text-center text-sm text-zinc-600">© 2026 Wagtail Inspect. All rights reserved.</p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
