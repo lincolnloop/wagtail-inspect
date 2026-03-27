@@ -1,0 +1,21 @@
+{% load wagtailcore_tags %}
+
+<section class="px-6 py-20 md:px-8 lg:px-12 {% if value.variant == 'primary' %}bg-zinc-100 text-zinc-900{% else %}bg-zinc-50{% endif %}">
+  <div class="mx-auto max-w-4xl text-center">
+    <h2 class="text-3xl md:text-4xl {% if value.variant == 'primary' %}text-zinc-900{% else %}text-zinc-900{% endif %}">
+      {{ value.headline }}
+    </h2>
+    {% if value.description %}
+      <p class="mx-auto mt-4 max-w-2xl text-lg {% if value.variant == 'primary' %}text-zinc-700{% else %}text-zinc-600{% endif %}">
+        {{ value.description }}
+      </p>
+    {% endif %}
+    {% if value.buttons %}
+      <div class="mt-8 flex flex-wrap justify-center gap-4">
+        {% for button in value.buttons %}
+          {% include_block button %}
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+</section>

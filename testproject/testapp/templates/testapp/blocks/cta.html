@@ -1,0 +1,11 @@
+{% load wagtailcore_tags %}
+
+{# Wrapper template for CallToActionBlock - renders a list of
+individually inspectable buttons #}
+{% if value.buttons %}
+  <div class="flex gap-4 justify-center flex-wrap">
+    {% for button in value.buttons %}
+      {% include_block button %}
+    {% endfor %}
+  </div>
+{% endif %}

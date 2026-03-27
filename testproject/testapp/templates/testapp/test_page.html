@@ -1,0 +1,10 @@
+{% extends "testapp/base.html" %}
+
+{% load wagtailcore_tags %}
+
+{% block title %}
+  {{ page.title }}
+{% endblock title %}
+{% block content %}
+  {% include_block page.body %}
+{% endblock content %}

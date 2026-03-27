@@ -1,0 +1,7 @@
+{% load wagtailcore_tags %}
+
+<section class="py-20 px-6 md:px-8 lg:px-12 {% if value.background == 'surface' %}bg-zinc-50{% elif value.background == 'secondary' %}bg-zinc-100{% else %}bg-white{% endif %}">
+  <div class="mx-auto {% if value.max_width == 'sm' %}max-w-xl{% elif value.max_width == 'lg' %}max-w-4xl{% else %}max-w-2xl{% endif %}">
+    <div class="prose prose-lg prose-zinc max-w-none">{% include_block value.content %}</div>
+  </div>
+</section>

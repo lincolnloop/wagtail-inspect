@@ -1,0 +1,45 @@
+{% load wagtailcore_tags wagtailimages_tags %}
+
+{% if value.image and value.alignment == "left" %}
+  <section class="bg-white px-6 py-20 md:px-8 lg:px-12 lg:py-32">
+    <div class="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2">
+      <div>
+        {% if value.badge %}
+          <span class="mb-6 inline-block rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-wider bg-orange-50 text-orange-600">{{ value.badge }}</span>
+        {% endif %}
+        <h1 class="text-4xl leading-tight text-zinc-900 md:text-5xl lg:text-6xl">{{ value.headline }}</h1>
+        <p class="mt-6 max-w-xl text-lg leading-relaxed text-zinc-600">{{ value.description }}</p>
+        <div class="mt-8 flex flex-wrap gap-4">
+          {% for button in value.buttons %}
+            {% include_block button %}
+          {% endfor %}
+        </div>
+      </div>
+      <div class="overflow-hidden rounded-2xl">
+        {% image value.image.image width-800 class="h-auto w-full object-cover" %}
+      </div>
+    </div>
+  </section>
+{% else %}
+  <section class="bg-white px-6 py-20 md:px-8 lg:px-12 lg:py-32">
+    <div class="mx-auto max-w-4xl {% if value.alignment == 'center' %}text-center{% endif %}">
+      {% if value.badge %}
+        <span class="mb-6 inline-block rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-wider bg-orange-50 text-orange-600">{{ value.badge }}</span>
+      {% endif %}
+      <h1 class="text-4xl leading-tight text-zinc-900 md:text-5xl lg:text-7xl">{{ value.headline }}</h1>
+      <p class="mt-6 text-lg leading-relaxed text-zinc-600 md:text-xl {% if value.alignment == 'center' %}mx-auto max-w-2xl{% else %}max-w-xl{% endif %}">
+        {{ value.description }}
+      </p>
+      <div class="mt-10 flex flex-wrap gap-4 {% if value.alignment == 'center' %}justify-center{% endif %}">
+        {% for button in value.buttons %}
+          {% include_block button %}
+        {% endfor %}
+      </div>
+      {% if value.image %}
+        <div class="mt-16 overflow-hidden rounded-2xl">
+          {% image value.image.image width-1200 class="h-auto w-full object-cover" %}
+        </div>
+      {% endif %}
+    </div>
+  </section>
+{% endif %}

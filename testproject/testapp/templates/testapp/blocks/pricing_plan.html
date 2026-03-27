@@ -1,0 +1,18 @@
+{% load wagtailcore_tags %}
+
+<div class="flex flex-col rounded-xl border p-8 {% if value.highlighted %}border-orange-600 bg-white shadow-xl ring-2 ring-orange-600/20{% else %}border-zinc-200 bg-white{% endif %}">
+  <div>
+    <h3 class="text-lg font-semibold text-zinc-900">{{ value.name }}</h3>
+    <div class="mt-4 text-4xl text-zinc-900">{{ value.price }}</div>
+    <p class="mt-2 text-zinc-600">{{ value.description }}</p>
+  </div>
+  <ul class="mt-8 flex-1 space-y-3">
+    {% for feature in value.features %}
+      <li class="flex items-start gap-3 text-sm text-zinc-900">
+        <span class="mt-0.5 text-green-500">✓</span>
+        {{ feature }}
+      </li>
+    {% endfor %}
+  </ul>
+  <div class="mt-8">{% include_block value.cta %}</div>
+</div>

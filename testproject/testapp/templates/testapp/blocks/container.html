@@ -1,0 +1,11 @@
+{% load wagtailcore_tags %}
+
+<div>
+  {% for item in value.content %}
+    <div>
+      {% for block in item %}
+        {% include_block block %}
+      {% endfor %}
+    </div>
+  {% endfor %}
+</div>

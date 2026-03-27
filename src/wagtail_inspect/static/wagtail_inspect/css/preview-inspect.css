@@ -1,0 +1,96 @@
+/**
+ * Wagtail Inspect — Styles
+ *
+ * Loaded in both contexts:
+ * - Wagtail admin: via the insert_global_admin_css hook
+ * - Standalone preview: dynamically by item_inspect_preview.html
+ *
+ * Dynamic theme colours (--wagtail-inspect-color, --wagtail-inspect-bg,
+ * --wagtail-inspect-label-color) are set at runtime by inspect-core.js
+ * from Wagtail's --w-color-* CSS variables.  The :root defaults below
+ * act as fallbacks when those variables are not yet injected.
+ */
+
+:root {
+  --wagtail-inspect-color: #007d7e;
+  --wagtail-inspect-bg: color-mix(in srgb, #007d7e 15%, transparent);
+  --wagtail-inspect-label-color: #fff;
+}
+
+/* --- Editor toolbar button (pressed state) --- */
+
+[data-preview-inspect-button][aria-pressed="true"] {
+  background-color: var(--w-color-secondary);
+  color: var(--w-color-text-button);
+}
+
+/* --- Inspect-mode overlay --- */
+
+#wagtail-inspect-overlay {
+  position: fixed;
+  pointer-events: none;
+  z-index: 999999;
+  border: 2px solid var(--wagtail-inspect-color);
+  background: var(--wagtail-inspect-bg);
+  transition:
+    top 0.1s ease-out,
+    left 0.1s ease-out;
+  display: none;
+  box-sizing: border-box;
+}
+
+#wagtail-inspect-label {
+  position: absolute;
+  top: -21.5px;
+  left: -2px;
+  background: var(--wagtail-inspect-color);
+  color: var(--wagtail-inspect-label-color);
+  font-size: 11px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: 2px 6px;
+  border-radius: 3px 3px 0 0;
+  white-space: nowrap;
+}
+
+/* --- Inspect-mode cursor --- */
+
+.wagtail-inspect-active,
+.wagtail-inspect-active * {
+  cursor: crosshair !important;
+}
+
+/* --- Focus ring for keyboard navigation of inspectable blocks --- */
+
+[data-block-id]:focus-visible {
+  outline: 2px solid var(--wagtail-inspect-color);
+  outline-offset: 2px;
+}
+
+/* --- Screen-reader-only live region --- */
+
+#wagtail-inspect-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- Flash highlight animation for navigated sections --- */
+
+@keyframes wagtail-inspect-flash {
+  0% {
+    background-color: color-mix(in srgb, var(--w-color-secondary) 15%, transparent);
+  }
+  100% {
+    background-color: unset;
+  }
+}
+
+.wagtail-inspect-flash {
+  animation: wagtail-inspect-flash 2s ease-out forwards;
+}
