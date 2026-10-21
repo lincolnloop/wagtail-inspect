@@ -2,13 +2,13 @@
 
 ## What `wagtail-inspect` does
 
-`wagtail-inspect` is a Wagtail plugin that adds block-level inspection to the Wagtail preview panel. It monkey-patches three Wagtail internals at Django startup (via `AppConfig.ready()`) so that during a preview request every rendered block receives `data-block-id`, `data-block-type`, and `data-block-label` HTML attributes. A JavaScript overlay then lets users hover over or click a block in the preview iframe to jump directly to that block's panel in the CMS editor.
+`wagtail-inspect` is a Wagtail plugin that adds block-level inspection to the Wagtail preview panel. It monkey-patches **four** Wagtail internals at Django startup (via `AppConfig.ready()`) so that during a preview request, blocks that go through `BoundBlock` rendering receive `data-block-id`, `data-block-type`, and `data-block-label`. **`inspect-augment.js`** fills gaps for DOM built outside those paths. A JavaScript overlay lets users hover or click a block in the preview to jump to that block’s panel in the CMS editor (or redirect from standalone preview).
 
 ---
 
 ## How annotation works (Python side — `patches.py`)
 
-Three patches are applied once at startup; all are idempotent and log errors rather than crashing.
+Four patches are applied once at startup; all are idempotent and log errors rather than crashing.
 
 **Patch 1a — `BoundBlock.render`**
 Called by `StreamBlock.render_basic` when Wagtail renders a stream via `{{ page.body }}` or `{% include_block page.body %}`. The patched version calls `_wrap_if_preview(self, original_output)`.
@@ -24,31 +24,11 @@ Called by `{% include_block block %}` when templates iterate explicitly:
 During preview (`preview_active` ContextVar is `True`), each iteration yields a `_ListChildProxy` instead of a plain value. The proxy exposes `.id`, `.block`, and `.render_as_block` so that `{% include_block item %}` triggers Patch 1b, while still forwarding `__getattr__`, `__getitem__`, `__iter__`, etc. to the underlying value so templates that read fields directly keep working.
 
 **Patch 2 — `PreviewableMixin.make_preview_request`**
-Sets `preview_active = True` for the lifetime of the preview response (using a `ContextVar` token reset in a `finally` block). This is the correct entry point — it fires before `handler.get_response()` renders the page template.
+Sets `preview_active` for the duration of the original `make_preview_request` (ContextVar token reset in `finally`), then snapshots `flat_block_map_for_instance(self)` into `_preview_block_maps` after the preview response is built.
 
-**Annotation logic — `_wrap_if_preview`**
+**Annotation logic — `_wrap_if_preview`** (simplified; see `patches.py` for full logic)
 
-```python
-def _wrap_if_preview(self, output):
-    if not (preview_active.get() and getattr(self, "id", None)):
-        return output  # skip: not a preview, or no UUID
-
-    block_type = getattr(self, "block_type", None) or self.block.name
-    if not block_type:
-        block_type = (self.block.label or "item").lower().replace(" ", "_")
-
-    block_label = self.block.label or block_type
-
-    annotated, injected = _inject_attrs_into_root(output, self.id, block_type, block_label)
-    if injected:
-        return annotated  # attributes added directly to first HTML element
-
-    # Fallback for text-only blocks (no root HTML element)
-    return format_html(
-        '<div data-block-id="{}" data-block-type="{}" data-block-label="{}" style="display:contents">{}</div>',
-        self.id, block_type, block_label, output,
-    )
-```
+Uses `resolve_block_type` / `resolve_block_label` from `block_map.py` for consistent labels with the API. If there is no HTML element, or the fragment is multi-root (markdown-style), a `display:contents` wrapper is used; otherwise attributes are injected on the first tag via `_inject_attrs_into_root`.
 
 `_inject_attrs_into_root` uses this regex to find the opening tag and insert the three `data-*` attributes right after the tag name:
 
@@ -66,9 +46,9 @@ If the block renders no HTML element at all (plain text from a `CharBlock`), a `
 Attached to the preview document (inside the iframe). On `activate()`:
 
 - Appends `#wagtail-inspect-overlay` and `#wagtail-inspect-live` to the preview `document.body`.
-- Listens for `mouseover`, `mouseout`, `click`, `keydown`, `focusin`, `focusout`, and `resize` events (capture phase).
+- Listens for `mouseover`, `mouseout`, `click`, `keydown`, `focusin`, `focusout`, `resize` (window), and `scroll` on the document (capture phase); resize/scroll reposition the overlay via `requestAnimationFrame` coalescing.
 - Block detection: `element.closest('[data-block-id]')`.
-- Overlay positioning: `getBoundingClientRect()` on the annotated element; falls back to the Range API for `display:contents` elements (which have zero-size rects).
+- Overlay positioning: `getBoundingClientRect()` on the annotated element; for zero-size rects, union **direct child** rects, then Range API only as last resort for text-only `display:contents` wrappers.
 
 **`preview-inspect-controller.js` — Stimulus controller**
 Registered as `preview-inspect`, attached to the same element as Wagtail's `w-preview` controller. Injects a crosshairs button into `.w-preview__sizes`. On button click, creates an `InspectMode` instance for the preview document and calls `.activate()`. On block click, calls `navigateToBlock(blockId)` which pushes `#block-{uuid}-section` to `window.history` and scrolls the editor to the matching `[data-contentpath="{blockId}"]` or `#block-{blockId}-section` element.

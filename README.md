@@ -1,8 +1,8 @@
 # wagtail-inspect
 
-Block inspection tools for the Wagtail CMS preview panel.
+Block inspection tools for Wagtail pages, previews and the editor preview panel.
 
-There are two ways to use it: a crosshairs button in the **editor’s preview panel** (next to the preview size controls), and **Inspect blocks** in the Wagtail userbar on **standalone preview** pages (`…/edit/preview/`). Both turn on inspect mode so you can point at a block in the rendered page and jump to that block in the page editor.
+There are two ways to use it: a crosshairs button in the **editor’s preview panel** (next to the preview size controls), and **Inspect blocks** in the Wagtail userbar on **standalone preview** pages (`…/edit/preview/`) and on **live pages** for users who can edit them. Both turn on inspect mode so you can point at a block in the rendered page and jump to that block in the page editor.
 
 ## Requirements
 
@@ -57,16 +57,16 @@ INSTALLED_APPS = [
 ]
 ```
 
-No URL configuration is required — the block-map JSON API registers itself via Wagtail's `register_admin_urls` hook under your existing Wagtail admin prefix (`/wagtail-inspect/api/page/<id>/`). There are no plugin settings or feature flags; installing the app enables the behaviour.
+No URL configuration is required — the block-map JSON API registers itself via Wagtail's `register_admin_urls` hook under your existing Wagtail admin prefix (`/wagtail-inspect/api/page/<id>/`). Installing the app enables the behaviour. One setting: `WAGTAIL_INSPECT_LIVE_PAGES` (default `True`) offers **Inspect blocks** on live pages to users who can edit the page; set it to `False` for previews only. Anonymous and non-editor responses are never annotated.
 
 **List iteration:** `apply_patches()` replaces `ListValue.__iter__` during preview only so `{% for x in value.items %}{% include_block x %}` yields inspectable list children (aligned with `.bound_blocks`). Outside preview, iteration matches stock Wagtail. If a template treats the loop variable as a plain value, use `x.value` or `{% include_block x %}` instead.
 
 ## How it works
 
-- **Preview-only wrapping:** A patch on `PreviewableMixin.make_preview_request` sets a `ContextVar` for the lifetime of each preview response. Monkey-patches on `BoundBlock.render` / `render_as_block` inject `data-block-id`, `data-block-type`, and `data-block-label` on rendered output when that flag is set (single-root injection, or a `display:contents` wrapper when the block renders multiple roots or plain text).
+- **Preview and editor-only wrapping:** A patch on `PreviewableMixin.make_preview_request` sets a `ContextVar` for the lifetime of each preview response; a patch on `Page.serve` does the same on live pages when the requesting user can edit the page (and renders a lazy `TemplateResponse` inside that context). Monkey-patches on `BoundBlock.render` / `render_as_block` inject `data-block-id`, `data-block-type`, and `data-block-label` on rendered output when that flag is set (single-root injection, or a `display:contents` wrapper when the block renders multiple roots or plain text).
 - **Authoritative block map:** The server walks the page’s StreamField data (`block_map.py`) and exposes a flat UUID → `{type, label, …}` map via the admin JSON API. The same walk is snapshotted during `make_preview_request` so the API matches the form-driven preview session (including unsaved edits).
 - **DOM augmentation in the preview document:** Templates that bypass `{% include_block %}` (e.g. `django-includecontents` `django-cotton` and similar packages, or `{% for item in value.items %}` without `include_block`) never hit the BoundBlock patches. **`inspect-augment.js` therefore runs in the same document as the rendered preview** — the full preview page or the editor preview **iframe** — reads the block map from the API, and adds `data-block-*` where Python could not. That avoids cross-frame `postMessage` for annotation: the script sees the DOM it is meant to label.
-- **Loading augment + controllers:** In the editor, a Stimulus controller (`preview-inspect-controller.js`) fetches the map on each iframe load, injects `inspect-augment.js` into the iframe, then calls `augmentPreviewBlocks`. On standalone preview, the userbar template uses a small inline script to chain-load CSS and JS in order, because Wagtail clones userbar items from a `<template>` into shadow DOM and external `<script src>` / `<link>` tags in that template do not execute when cloned.
+- **Loading augment + controllers:** In the editor, a Stimulus controller (`preview-inspect-controller.js`) fetches the map on each iframe load, injects `inspect-augment.js` into the iframe, then calls `augmentPreviewBlocks`. On standalone preview and live pages, the userbar item declares its CSS and JS as `media`, which Wagtail emits as external files after the userbar (so a strict `script-src` CSP still allows them). On live pages the item asks the API for `?source=live`, the published body, so block ids match the rendered page.
 - **Shared inspect UX:** `inspect-core.js` implements `WagtailInspectMode` (overlay highlight, keyboard access, click → block id). The preview-panel controller drives navigation inside the edit UI (expand panels, scroll, flash). The userbar controller navigates with `…/edit/#block-{uuid}-section`.
 
 ## Development

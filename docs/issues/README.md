@@ -7,7 +7,7 @@ Actionable tracking notes for maintenance, hardening, and test gaps. Resolved it
 | Topic                                             | File                                                                         |
 | ------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Wagtail version compatibility & CI matrix         | [001-wagtail-version-compatibility.md](001-wagtail-version-compatibility.md) |
-| Test suite gaps & CI                              | [002-no-test-suite.md](002-no-test-suite.md)                                 |
+| Test coverage follow-ups (CI runs on main)        | [002-no-test-suite.md](002-no-test-suite.md)                                 |
 | Feature flag (`WAGTAIL_INSPECT_ENABLED`)          | [003-no-feature-flag.md](003-no-feature-flag.md)                             |
 | Overlay z-index (CSS variable / Wagtail layering) | [007-hardcoded-z-index.md](007-hardcoded-z-index.md)                         |
 | Inline script URL hardening                       | [012-template-script-injection.md](012-template-script-injection.md)         |

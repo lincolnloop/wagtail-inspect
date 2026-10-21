@@ -506,3 +506,87 @@ def test_list_value_iter_patch_applied_at_startup():
     """apply_patches() installs ListValue.__iter__ replacement exactly once."""
     assert "ListValue.__iter__" in patches_module._originals
     assert ListValue.__dict__.get("__iter__") is patched_list_value_iter
+
+
+# ---------------------------------------------------------------------------
+# patched_page_serve: live pages for editors
+# ---------------------------------------------------------------------------
+
+
+class _LazyResponse:
+    """TemplateResponse stand-in: records whether preview_active was on at render."""
+
+    def __init__(self):
+        self.is_rendered = False
+        self.rendered_with_preview = None
+
+    def render(self):
+        self.rendered_with_preview = preview_active.get()
+        self.is_rendered = True
+
+
+class _ServePage:
+    def __init__(self, *, editable):
+        self.pk = 1
+        self._editable = editable
+
+    def permissions_for_user(self, user):
+        editable = self._editable
+        return type("P", (), {"can_edit": lambda self: editable})()
+
+
+def _serve_request(*, authenticated=True):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(user=SimpleNamespace(is_authenticated=authenticated))
+
+
+@pytest.fixture
+def original_serve(monkeypatch):
+    seen = []
+
+    def fake_serve(page, request, *args, **kwargs):
+        seen.append(preview_active.get())
+        return _LazyResponse()
+
+    monkeypatch.setitem(patches_module._originals, "Page.serve", fake_serve)
+    return seen
+
+
+def test_page_serve_annotates_and_renders_for_editors(original_serve):
+    response = patches_module.patched_page_serve(_ServePage(editable=True), _serve_request())
+
+    assert original_serve == [True]
+    assert response.rendered_with_preview is True
+    assert preview_active.get() is False
+
+
+@pytest.mark.parametrize(
+    ("page", "request_kwargs"),
+    [
+        (_ServePage(editable=True), {"authenticated": False}),
+        (_ServePage(editable=False), {}),
+    ],
+    ids=["anonymous", "non-editor"],
+)
+def test_page_serve_leaves_other_visitors_untouched(original_serve, page, request_kwargs):
+    response = patches_module.patched_page_serve(page, _serve_request(**request_kwargs))
+
+    assert original_serve == [False]
+    assert response.is_rendered is False
+
+
+def test_page_serve_respects_live_pages_setting(original_serve, settings):
+    settings.WAGTAIL_INSPECT_LIVE_PAGES = False
+
+    patches_module.patched_page_serve(_ServePage(editable=True), _serve_request())
+
+    assert original_serve == [False]
+
+
+def test_page_serve_is_patched():
+    from wagtail.models import Page
+
+    apply_patches()
+
+    assert Page.serve is patches_module.patched_page_serve

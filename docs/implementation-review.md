@@ -23,9 +23,9 @@ The following findings from the original review have been addressed:
 | Commented-out preview guards                                                | Re-introduced as proper guards via `preview_active` ContextVar                                                                                                                                        |
 | `mark_safe()` with unescaped string interpolation                           | Replaced by `format_html()` which auto-escapes all interpolated values                                                                                                                                |
 | `patched_stream_child_render` required `context` parameter                  | Both `BoundBlock` patch functions accept `context=None` to prevent `TypeError`                                                                                                                        |
-| Scroll handler fires on every frame                                         | Scroll handling removed; resize handler is the only layout-repositioning path                                                                                                                         |
+| Scroll handler fires on every frame                                         | Resize and scroll both call `_scheduleOverlayReposition()` in `inspect-core.js`, coalesced with `requestAnimationFrame` to avoid per-event layout thrashing                                                                 |
 | `loadConfiguration()` silently swallows errors                              | Catch block now logs `console.warn` with the error                                                                                                                                                    |
-| Module docstring outdated                                                   | Rewritten to accurately describe the three patches and BoundBlock approach                                                                                                                            |
+| Module docstring outdated                                                   | Rewritten to describe the four patches (`BoundBlock` ×2, `ListValue.__iter__`, `make_preview_request`) and BoundBlock-centred wrapping                                                                 |
 | Shared JS logic duplicated across controllers                               | Extracted into `inspect-core.js` as the `InspectMode` class, used by both controllers                                                                                                                 |
 | `console.log` in `preview-inspect-controller.js`                            | Removed                                                                                                                                                                                               |
 | Middleware URL-based preview detection is fragile                           | Removed entirely; preview detection now uses a `ContextVar` set by patching `PreviewableMixin.make_preview_request`                                                                                   |
@@ -34,7 +34,7 @@ The following findings from the original review have been addressed:
 | Snippet-embedded StreamFields produced unnavigable `data-block-id` wrappers | Replaced by patching `BoundBlock.render` and `BoundBlock.render_as_block` with an `id` guard -- only blocks that carry a UUID (i.e. `StreamChild` and `ListChild`) are wrapped                        |
 | Block labels don't distinguish ListBlock items                              | `_wrap_if_preview()` reads `self.block_type` (StreamChild) or `self.block.name` (ListChild), plus `self.block.label` for the human-readable label                                                     |
 | Thread-local state is not async-safe                                        | Replaced by `preview_active: ContextVar[bool]` in `__init__.py`; set/reset in `patched_make_preview_request`                                                                                          |
-| Preview detection relies on template context or URL matching                | Moved to `PreviewableMixin.make_preview_request` patch -- fires before template rendering, requires no context argument                                                                               |
+| Preview detection relies on template context or URL matching                | Moved to `PreviewableMixin.make_preview_request` patch — sets `preview_active` for the preview request scope, requires no template context argument                                                                               |
 | `data-block-type` attribute missing                                         | `_wrap_if_preview()` now writes `data-block-type` alongside `data-block-id` and `data-block-label`                                                                                                    |
 | `InspectBlocksUserbarItem` used wrong template attribute                    | Changed `template = ...` to `template_name = ...`; Wagtail's `BaseItem` requires `template_name` — using `template` caused the userbar item to silently fail to render                                |
 | `InspectBlocksUserbarItem.get_context_data` had wrong signature             | Changed `(self, request)` to `(self, parent_context)` to match Wagtail's `BaseItem` API; incorrect signature caused `super().get_context_data()` to fail                                              |
@@ -63,15 +63,15 @@ The `.id` guard (`getattr(self, "id", None)`) ensures that plain `BoundBlock` in
 
 `preview_active` is a `ContextVar[bool]` rather than `threading.local`. This is async-safe (works with both WSGI and ASGI), is automatically scoped per execution context, and does not require passing a `context` argument to the wrapping logic.
 
-The ContextVar is set by patching `PreviewableMixin.make_preview_request` -- the earliest entry point that fires before template rendering and is available in all nested calls.
+The ContextVar is set by patching `PreviewableMixin.make_preview_request` — an entry point that wraps the full preview work so nested renders see `preview_active.get() == True`.
 
 ### 4. No middleware required
 
-`middleware.py` was deleted. Preview detection is handled entirely by the `patched_make_preview_request` patch, which sets `preview_active` before template rendering. No `MIDDLEWARE` entry is required.
+`middleware.py` was deleted. Preview detection is handled entirely by the `patched_make_preview_request` patch, which sets `preview_active` for the scope of Wagtail’s preview request (including template rendering). No `MIDDLEWARE` entry is required.
 
-### 5. Python-only wrapping is sufficient
+### 5. Python-first wrapping plus client-side augmentation
 
-`BoundBlock.render`, `BoundBlock.render_as_block`, and `ListValue.__iter__` together cover every block rendering path in standard Wagtail templates. No client-side DOM annotation ("augmentation") is needed: if a template uses `{% include_block %}` on list items, Python's `ListValue.__iter__` patch ensures those items arrive as `ListChild` with UUIDs and are wrapped correctly.
+`BoundBlock.render`, `BoundBlock.render_as_block`, and `ListValue.__iter__` cover the normal Wagtail rendering paths (`{{ … }}`, `{% include_block %}`, and preview-gated list iteration). Templates that bypass those paths — for example raw `{% for item in value.items %}` without `include_block`, or libraries like `django-includecontents` — never hit the patches. **`inspect-augment.js`** closes that gap: controllers fetch the authoritative block map from the API and call `augmentPreviewBlocks()` in the preview document so those DOM nodes still get `data-block-*` attributes.
 
 ### 6. Attribute injection with `display:contents` fallback
 
@@ -79,11 +79,11 @@ The ContextVar is set by patching `PreviewableMixin.make_preview_request` -- the
 
 **Fallback:** when a block renders plain text with no HTML element (rare — typically only bare `CharBlock`s), a `<div style="display:contents">` wrapper is used instead. The wrapper exists in the DOM but generates no layout box, remaining queryable via `[data-block-id]`.
 
-**Rect computation:** `_getBlockRect()` calls `getBoundingClientRect()` directly on the annotated root element (primary path). It falls back to the Range API only when the rect is zero-sized, which indicates a `display:contents` wrapper (text-only fallback case).
+**Rect computation:** `_getBlockRect()` uses `getBoundingClientRect()` on the block root; for zero-sized rects (e.g. `display:contents` wrappers), it unions **direct child** element rects first and uses the Range API only as a last resort for text-only wrappers with no element children.
 
 ### 7. Dynamic script loading in the userbar template
 
-Wagtail clones userbar content from a `<template>` element into Shadow DOM. Cloned `<script src>` tags don't execute, but inline scripts do. The inline script bootstrapper dynamically creates `<script>` elements to load `inspect-core.js` and `userbar-inspect.js` in the correct order.
+Wagtail clones userbar content from a `<template>` element into Shadow DOM. Cloned `<script src>` tags don't execute, but inline scripts do. The inline script bootstrapper dynamically creates `<link>` / `<script>` elements to load `preview-inspect.css`, `inspect-core.js`, `inspect-augment.js`, and `userbar-inspect.js` in order (see `item_inspect_preview.html`).
 
 ### 8. Two controllers instead of one
 
@@ -144,7 +144,7 @@ Open backlog: [issues/README.md](issues/README.md).
 | Area                          | Link                                                | Notes                                                       |
 | ----------------------------- | --------------------------------------------------- | ----------------------------------------------------------- |
 | Wagtail version compatibility | [#001](issues/001-wagtail-version-compatibility.md) | Graceful patching + version warning; CI matrix still wanted |
-| Test suite gaps & CI          | [#002](issues/002-no-test-suite.md)                 | Suites exist locally; CI workflow not in repo               |
+| Test suite gaps & CI          | [#002](issues/002-no-test-suite.md)                 | GitHub Actions runs lint + `just test-all` on push/PR; issue tracks residual gaps |
 | Feature flag                  | [#003](issues/003-no-feature-flag.md)               | Opt-out setting not implemented                             |
 | Hardcoded z-index             | [#007](issues/007-hardcoded-z-index.md)             | Stacking in CSS; optional token / Wagtail layering check    |
 | Template script injection     | [#012](issues/012-template-script-injection.md)     | Harden inline bootstrap URLs                                |

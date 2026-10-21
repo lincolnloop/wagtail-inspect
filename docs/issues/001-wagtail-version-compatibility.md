@@ -5,19 +5,20 @@
 
 ## Description
 
-The library monkey-patches three Wagtail methods that are not part of Wagtail's public API:
+The library monkey-patches four Wagtail APIs that are not guaranteed as stable public contracts:
 
 | Patched method                          | Location                 | Risk level                       |
 | --------------------------------------- | ------------------------ | -------------------------------- |
 | `BoundBlock.render`                     | `wagtail.blocks`         | Medium -- semi-public base class |
 | `BoundBlock.render_as_block`            | `wagtail.blocks`         | Medium -- semi-public base class |
-| `PreviewableMixin.make_preview_request` | `wagtail.models.preview` | Low -- stable lifecycle method   |
+| `ListValue.__iter__`                    | `wagtail.blocks.list_block` | Medium -- list iteration internals |
+| `PreviewableMixin.make_preview_request` | `wagtail.models.preview` (or `wagtail.models` on older releases) | Low -- stable lifecycle method   |
 
-These methods are implementation details of Wagtail's block rendering and preview pipeline. They may change signatures, move modules, or be removed entirely in future Wagtail releases without deprecation warnings.
+These are implementation details of Wagtail's block rendering and preview pipeline. They may change signatures, move modules, or be removed entirely in future Wagtail releases without deprecation warnings.
 
-The `README.md` states compatibility with Wagtail 5.x, 6.x, and 7.x, but there is no automated verification of this claim.
+The `README.md` states compatibility with Wagtail 5.x, 6.x, and 7.x. **CI** runs backend + frontend + E2E tests on every push/PR; a full version matrix is also defined under `[tool.tox]` in `pyproject.toml` (`just tox` / `just tox-env …`).
 
-**Improvement over previous approach:** The original four patches targeted `IncludeBlockNode.render`, `StreamValue.render_as_block`, `StreamValue.__html__`, and `StreamChild.render` -- lower-level, more volatile internals. The current three patches target `BoundBlock` (a public base class) and `PreviewableMixin` (a lifecycle mixin), which are more stable and less likely to change without notice.
+**Improvement over previous approach:** The original four patches targeted `IncludeBlockNode.render`, `StreamValue.render_as_block`, `StreamValue.__html__`, and `StreamChild.render` -- lower-level, more volatile internals. The current approach centres on `BoundBlock` (two methods), adds `ListValue.__iter__` for list-block iteration, and uses `PreviewableMixin.make_preview_request` for preview lifecycle -- generally more stable than the earlier set.
 
 ## Current Mitigation
 
@@ -34,11 +35,11 @@ The `README.md` states compatibility with Wagtail 5.x, 6.x, and 7.x, but there i
 
 ## Remaining Improvements
 
-- Add a CI matrix that tests against multiple Wagtail versions (at minimum: latest stable, previous LTS).
-- Monitor Wagtail's changelog for changes to `BoundBlock` and `PreviewableMixin`.
+- Optional: extend **GitHub Actions** to a multi-version matrix (today’s `ci.yml` runs one resolved environment from the lockfile; `just tox` / `pyproject.toml` `[tool.tox]` already define Django × Wagtail combinations for local or scheduled runs).
+- Monitor Wagtail’s changelog for changes to `BoundBlock`, `ListValue`, and `PreviewableMixin`.
 
 ## Acceptance Criteria
 
 - [x] `apply_patches()` logs a warning for untested Wagtail versions
 - [x] Patch failures are handled gracefully (log error, skip patch, app still starts)
-- [ ] CI tests run against at least two Wagtail versions
+- [ ] CI (or scheduled job) runs tests against at least two distinct Wagtail minor lines without manual `tox`

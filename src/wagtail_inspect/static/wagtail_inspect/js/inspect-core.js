@@ -5,7 +5,7 @@
  * parent/admin --w-color-* when available. Exposed as window.WagtailInspectMode.
  *
  * @param {Document} doc
- * @param {{ onBlockClick: function(string): void, onEscape: function(): void }} options
+ * @param {{ onBlockClick: function(string): void, onEscape: function(): void, stylesheetUrl?: string }} options
  */
 class InspectMode {
   static DEFAULTS = {
@@ -13,10 +13,17 @@ class InspectMode {
     labelColor: "#fff",
   };
 
-  constructor(doc, { onBlockClick, onEscape }) {
+  // Host pages may park inert <template data-block-id> markers in the DOM;
+  // they have no box and must never become inspect targets.
+  static BLOCK_SELECTOR = "[data-block-id]:not(template)";
+
+  constructor(doc, { onBlockClick, onEscape, stylesheetUrl = "" }) {
     this.doc = doc;
     this.onBlockClick = onBlockClick;
     this.onEscape = onEscape;
+    // preview-inspect.css must live in the inspected document (the page, or
+    // the editor's preview iframe); the userbar's own CSS is shadow-scoped.
+    this.stylesheetUrl = stylesheetUrl;
 
     this._active = false;
     this._overlay = null;
@@ -103,7 +110,7 @@ class InspectMode {
   }
 
   _findBlockElement(element) {
-    return element.closest("[data-block-id]");
+    return element.closest(InspectMode.BLOCK_SELECTOR);
   }
 
   _handleMouseOver(event) {
@@ -179,6 +186,14 @@ class InspectMode {
     const overlay = this.doc.createElement("div");
     overlay.id = "wagtail-inspect-overlay";
     overlay.setAttribute("aria-hidden", "true");
+    // Critical layout via CSSOM (CSP-safe): never part of the page flow, even
+    // before preview-inspect.css has loaded.
+    Object.assign(overlay.style, {
+      position: "fixed",
+      pointerEvents: "none",
+      zIndex: "2147483646",
+      display: "none",
+    });
 
     const label = this.doc.createElement("div");
     label.id = "wagtail-inspect-label";
@@ -214,7 +229,7 @@ class InspectMode {
   /** One ancestor segment when nested, e.g. "Two Column › Hero". */
   _buildBreadcrumbLabel(element) {
     const label = element.dataset.blockLabel || "Block";
-    const ancestor = element.parentElement?.closest("[data-block-id]");
+    const ancestor = element.parentElement?.closest(InspectMode.BLOCK_SELECTOR);
     if (!ancestor) return label;
     return `${ancestor.dataset.blockLabel || "Block"} \u203A ${label}`;
   }
@@ -274,12 +289,17 @@ class InspectMode {
 
     const label = this._overlay.querySelector("#wagtail-inspect-label");
     if (label) {
-      const topClip = Math.max(0, -padTop);
-      if (topClip > 0) {
-        label.style.top = "-1.5px";
-        label.style.borderRadius = "0 0 3px 3px";
+      // The label sits above the box; when there is no room above (block at
+      // or past the top of the viewport) tuck it inside the top edge instead.
+      const roomAbove = top - (label.offsetHeight || 20) - 8;
+      if (padTop < 0 || roomAbove < 0) {
+        label.style.top = "4px";
+        label.style.bottom = "auto";
+        label.style.left = "4px";
       } else {
         label.style.top = "";
+        label.style.bottom = "";
+        label.style.left = "";
       }
     }
   }
@@ -328,7 +348,7 @@ class InspectMode {
   }
 
   _getBlockElements() {
-    return this.doc.querySelectorAll("[data-block-id]");
+    return this.doc.querySelectorAll(InspectMode.BLOCK_SELECTOR);
   }
 
   _enableBlockAccessibility() {
@@ -396,28 +416,41 @@ class InspectMode {
     return result;
   }
 
+  static COLOR_PROPERTIES = [
+    "--wagtail-inspect-color",
+    "--wagtail-inspect-bg",
+    "--wagtail-inspect-label-color",
+  ];
+
   _injectStyles() {
-    this.doc.documentElement.classList.add("wagtail-inspect-active");
+    const root = this.doc.documentElement;
+    root.classList.add("wagtail-inspect-active");
 
-    if (this.doc.getElementById("wagtail-inspect-styles")) return;
+    if (this.stylesheetUrl && !this.doc.getElementById("wagtail-inspect-stylesheet")) {
+      const link = this.doc.createElement("link");
+      link.id = "wagtail-inspect-stylesheet";
+      link.rel = "stylesheet";
+      link.href = this.stylesheetUrl;
+      (this.doc.head || root).appendChild(link);
+    }
 
+    // Custom properties through the CSSOM rather than an inline <style>, so a
+    // strict style-src CSP does not block them.
     const colors = this._resolveColors();
-
-    const style = this.doc.createElement("style");
-    style.id = "wagtail-inspect-styles";
-    style.textContent = `
-      :root {
-        --wagtail-inspect-color: ${colors.color};
-        --wagtail-inspect-bg: color-mix(in srgb, ${colors.color} 15%, transparent);
-        --wagtail-inspect-label-color: ${colors.labelColor};
-      }
-    `;
-    this.doc.head.appendChild(style);
+    root.style.setProperty("--wagtail-inspect-color", colors.color);
+    root.style.setProperty(
+      "--wagtail-inspect-bg",
+      `color-mix(in srgb, ${colors.color} 8%, transparent)`,
+    );
+    root.style.setProperty("--wagtail-inspect-label-color", colors.labelColor);
   }
 
   _removeStyles() {
-    this.doc.documentElement.classList.remove("wagtail-inspect-active");
-    this.doc.getElementById("wagtail-inspect-styles")?.remove();
+    const root = this.doc.documentElement;
+    root.classList.remove("wagtail-inspect-active");
+    for (const name of InspectMode.COLOR_PROPERTIES) {
+      root.style.removeProperty(name);
+    }
   }
 }
 

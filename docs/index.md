@@ -16,13 +16,16 @@ If you're new to this project, start with the [README](../README.md) for install
 | [Implementation Review](implementation-review.md)               | Code review covering resolved items, remaining concerns, and improvement suggestions                                                                                                                                                                                               |
 | [Issues & backlog](issues/README.md)                            | Open tracking notes (compatibility, tests, flags, hardening)                                                                                                                                                                                                                       |
 | [Monkey-patching alternatives](monkey-patching-alternatives.md) | Design doc: why patches exist and options considered                                                                                                                                                                                                                               |
+| [Bug reproduction prompt](bug-reproduction-prompt.md)         | Structured notes for debugging “block not inspectable” reports (patches, augment, DOM checks)                                                                                                                                                                                         |
 
 ## Quick Reference
 
 ### File Map
 
+Library code lives under `src/wagtail_inspect/` (see `pyproject.toml`).
+
 ```
-wagtail_inspect/
+src/wagtail_inspect/
   __init__.py                        # Package init, preview_active ContextVar, _preview_block_maps cache
   apps.py                            # Django AppConfig -- applies patches on startup
   block_map.py                       # Block tree traversal -- builds UUID-keyed block map from page data
@@ -46,6 +49,7 @@ wagtail_inspect/
     frontend-controllers.md          # JavaScript controllers deep dive
     implementation-review.md         # Code review and notes
     monkey-patching-alternatives.md  # Design: patching vs other approaches
+    bug-reproduction-prompt.md       # Debugging checklist for inspect failures
     issues/                          # Open backlog (see issues/README.md)
 ```
 
@@ -63,11 +67,11 @@ wagtail_inspect/
 | `preview_active`              | `ContextVar[bool]` in `__init__.py` -- signals preview mode to the rendering patches; set by patching `PreviewableMixin.make_preview_request`             |
 | `_preview_block_maps`         | Module-level `dict[int, dict]` in `__init__.py` -- caches the block map after each preview render so the API serves UUIDs that match the live preview DOM |
 | `flat_block_map_for_instance` | Function in `block_map.py` -- returns a `{uuid: {type, label, children}}` dict for all StreamField blocks on a page instance                              |
-| `ListValue.__iter__`          | Always patched in `apply_patches()` -- iterating a list field yields `_ListChildProxy` (use `{% include_block x %}` or `x.value` for inner struct fields) |
+| `ListValue.__iter__`          | Patched at startup; **during preview only** iteration yields `_ListChildProxy` so `{% include_block x %}` gets UUID-bearing blocks. Outside preview, stock Wagtail iteration applies (use `{% include_block x %}` or `x.value` for struct fields) |
 | `window.wagtailInspectConfig` | Inline config object injected by `global_admin_js()` -- provides `apiBase` and `augmentScriptUrl` to the admin-side controllers                           |
 
 ### Requirements
 
-- Python 3.8+
+- Python 3.12+ (`requires-python` in `pyproject.toml`)
 - Django 4.2+
-- Wagtail 5.0+ (tested with 5.x, 6.x, and 7.x)
+- Wagtail 5.0+ (tested with 5.x, 6.x, and 7.x; see `TESTED_WAGTAIL_VERSIONS` in `patches.py` and the tox matrix in `pyproject.toml`)

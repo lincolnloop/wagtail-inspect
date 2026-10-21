@@ -42,11 +42,13 @@ function augmentPreviewBlocks(blocks) {
     const children = parentInfo.children;
     if (!children || children.length === 0) continue;
 
-    const unannotated = children.filter((id) => !document.querySelector(`[data-block-id="${id}"]`));
+    const unannotated = children.filter(
+      (id) => !document.querySelector(`[data-block-id="${id}"]:not(template)`),
+    );
 
     if (unannotated.length === 0) continue;
 
-    const parentEl = document.querySelector(`[data-block-id="${parentId}"]`);
+    const parentEl = document.querySelector(`[data-block-id="${parentId}"]:not(template)`);
     if (!parentEl) continue;
 
     const candidates = _findSiblingGroup(parentEl, unannotated.length);
@@ -68,7 +70,7 @@ function augmentPreviewBlocks(blocks) {
 }
 
 function _repairEmptyLabels(blocks) {
-  for (const el of document.querySelectorAll("[data-block-id]")) {
+  for (const el of document.querySelectorAll("[data-block-id]:not(template)")) {
     const id = el.dataset.blockId;
     const info = blocks[id];
     if (!info) continue;

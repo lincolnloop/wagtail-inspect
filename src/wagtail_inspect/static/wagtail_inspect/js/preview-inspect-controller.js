@@ -61,6 +61,9 @@ class PreviewInspectController extends window.StimulusModule.Controller {
 
   _createInspectMode(previewDoc) {
     return new window.WagtailInspectMode(previewDoc, {
+      // The overlay is drawn inside the preview iframe, which never loads the
+      // admin's copy of preview-inspect.css.
+      stylesheetUrl: window.wagtailInspectConfig?.cssUrl || "",
       onBlockClick: (blockId) => {
         this.navigateToBlock(blockId);
         this.deactivateInspectMode();
@@ -159,10 +162,19 @@ class PreviewInspectController extends window.StimulusModule.Controller {
   }
 
   getPreviewIframe() {
+    // During a refresh Wagtail 6+ briefly has two iframes: the current one and a
+    // proxy (cloned, no id, proxy class) that replaces it once loaded. Never
+    // hand back the proxy or the iframe that is about to be removed.
+    const proxyClass = this.element.getAttribute("data-w-preview-proxy-class");
+    const candidates = Array.from(
+      this.element.querySelectorAll(
+        '#w-preview-iframe, [data-w-preview-target="iframe"], .w-preview__iframe',
+      ),
+    ).filter((iframe) => !proxyClass || !iframe.classList.contains(proxyClass));
     return (
-      this.element.querySelector('[data-w-preview-target="iframe"]') ||
-      this.element.querySelector(".w-preview__iframe") ||
-      this.element.querySelector("#w-preview-iframe")
+      candidates.find((iframe) => iframe.id === "w-preview-iframe") ||
+      candidates[candidates.length - 1] ||
+      null
     );
   }
 
@@ -179,6 +191,16 @@ class PreviewInspectController extends window.StimulusModule.Controller {
   }
 
   setupIframeLoadAction() {
+    if (this.element.hasAttribute("data-w-preview-proxy-class")) {
+      // Wagtail 6+ reloads by swapping in a new iframe and dispatches
+      // `w-preview:loaded` once the swap is done. A `load` listener on the
+      // iframe would also fire on the proxy, before the old document is gone.
+      this._addElementAction("w-preview:loaded->preview-inspect#handleIframeLoad");
+      const iframe = this.getPreviewIframe();
+      this._handleIfAlreadyLoaded(iframe);
+      return;
+    }
+
     const iframe = this.getPreviewIframe();
     if (iframe) {
       this._attachIframeLoadListener(iframe);
@@ -204,6 +226,18 @@ class PreviewInspectController extends window.StimulusModule.Controller {
       );
     }
 
+    this._handleIfAlreadyLoaded(iframe);
+  }
+
+  _addElementAction(action) {
+    const existingActions = this.element.getAttribute("data-action") || "";
+    if (!existingActions.includes(action)) {
+      this.element.setAttribute("data-action", `${existingActions} ${action}`.trim());
+    }
+  }
+
+  _handleIfAlreadyLoaded(iframe) {
+    if (!iframe) return;
     try {
       const doc = iframe.contentDocument;
       if (doc && doc.readyState === "complete" && doc.body) {
@@ -235,13 +269,13 @@ class PreviewInspectController extends window.StimulusModule.Controller {
     const previewDoc = this.getPreviewDocument();
     if (!previewDoc || !previewDoc.body) return;
 
-    if (previewDoc.querySelector("[data-block-id]")) {
+    if (previewDoc.querySelector("[data-block-id]:not(template)")) {
       this.onBlocksReady();
       return;
     }
 
     this.blockObserver = new MutationObserver(() => {
-      if (previewDoc.querySelector("[data-block-id]")) {
+      if (previewDoc.querySelector("[data-block-id]:not(template)")) {
         this.blockObserver.disconnect();
         this.blockObserver = null;
         this.onBlocksReady();

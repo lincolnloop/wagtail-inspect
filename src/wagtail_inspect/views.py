@@ -20,6 +20,10 @@ class PageInspectView(View):
         if not page.permissions_for_user(request.user).can_edit():
             return HttpResponse(status=403)
 
+        # Userbar on a live page: describe the published body it rendered.
+        if request.GET.get("source") == "live":
+            return JsonResponse({"blocks": flat_block_map_for_instance(page)})
+
         from . import _preview_block_maps
 
         if page.pk in _preview_block_maps:

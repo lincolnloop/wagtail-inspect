@@ -6,6 +6,9 @@
   still work as values but get inspect wrapping via ``include_block``.
 - ``PreviewableMixin.make_preview_request``: set ``preview_active``, then store
   ``flat_block_map_for_instance`` for the page API.
+- ``Page.serve``: on live pages, set ``preview_active`` for users who can edit the
+  page (``WAGTAIL_INSPECT_LIVE_PAGES``), so the userbar can inspect there too.
+  Anonymous and non-editor responses are untouched.
 
 Patches are idempotent; failures log and do not abort startup.
 """
@@ -18,13 +21,14 @@ from django.utils.html import conditional_escape, format_html, mark_safe
 from wagtail import VERSION as WAGTAIL_VERSION
 from wagtail.blocks import BoundBlock
 from wagtail.blocks.list_block import ListValue
+from wagtail.models import Page
 
 try:
     from wagtail.models.preview import PreviewableMixin
 except ImportError:
     from wagtail.models import PreviewableMixin
 
-from . import preview_active
+from . import inspect_live_pages_enabled, preview_active, user_can_inspect
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +215,26 @@ def patched_make_preview_request(self, *args, **kwargs):
         preview_active.reset(token)
 
 
+def patched_page_serve(self, request, *args, **kwargs):
+    original = _originals["Page.serve"]
+    if (
+        preview_active.get()
+        or not inspect_live_pages_enabled()
+        or not user_can_inspect(self, getattr(request, "user", None))
+    ):
+        return original(self, request, *args, **kwargs)
+
+    token = preview_active.set(True)
+    try:
+        response = original(self, request, *args, **kwargs)
+        # TemplateResponse renders lazily, after this context would be reset.
+        if callable(getattr(response, "render", None)) and not getattr(response, "is_rendered", True):
+            response.render()
+        return response
+    finally:
+        preview_active.reset(token)
+
+
 def _apply_patch(target, attr, replacement, label) -> None:
     """Replace *attr* on *target* once; log failures without raising."""
     if label in _originals:
@@ -253,3 +277,5 @@ def apply_patches() -> None:
         patched_list_value_iter,
         "ListValue.__iter__",
     )
+
+    _apply_patch(Page, "serve", patched_page_serve, "Page.serve")

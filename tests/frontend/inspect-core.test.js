@@ -47,10 +47,23 @@ describe("InspectMode", () => {
       expect(document.getElementById("wagtail-inspect-overlay")).not.toBeNull();
     });
 
-    it("injects a <style> element", () => {
+    it("sets the theme custom properties on <html>", () => {
       mode = createMode();
       mode.activate();
-      expect(document.getElementById("wagtail-inspect-styles")).not.toBeNull();
+      const root = document.documentElement;
+      expect(root.style.getPropertyValue("--wagtail-inspect-color")).not.toBe("");
+      expect(root.style.getPropertyValue("--wagtail-inspect-label-color")).not.toBe("");
+    });
+
+    it("links its stylesheet into the inspected document once", () => {
+      mode = createMode({ stylesheetUrl: "/static/wagtail_inspect/css/preview-inspect.css" });
+      mode.activate();
+      mode.deactivate();
+      mode.activate();
+      const links = document.querySelectorAll("#wagtail-inspect-stylesheet");
+      expect(links).toHaveLength(1);
+      expect(links[0].getAttribute("href")).toBe("/static/wagtail_inspect/css/preview-inspect.css");
+      links[0].remove();
     });
 
     it("injects an ARIA live region", () => {
@@ -88,11 +101,11 @@ describe("InspectMode", () => {
       expect(document.getElementById("wagtail-inspect-overlay")).toBeNull();
     });
 
-    it("removes the style element", () => {
+    it("clears the theme custom properties", () => {
       mode = createMode();
       mode.activate();
       mode.deactivate();
-      expect(document.getElementById("wagtail-inspect-styles")).toBeNull();
+      expect(document.documentElement.style.getPropertyValue("--wagtail-inspect-color")).toBe("");
     });
 
     it("removes the live region", () => {
@@ -348,8 +361,7 @@ describe("InspectMode", () => {
       mode = createMode();
       mode.activate();
       const el = blockEl();
-      // Padded top = 0 - 3 = -3 → topClip > 0; overlay top clamped to 0. Label uses a fixed
-      // inline offset (-1.5px) + bottom radii instead of computing from label height.
+      // Padded top = 0 - 3 = -3 → no room above; the label tucks inside the top edge.
       el.getBoundingClientRect = () => ({
         x: 10,
         y: 0,
@@ -364,23 +376,23 @@ describe("InspectMode", () => {
       mode._positionOverlay(el);
       const label = document.getElementById("wagtail-inspect-label");
       expect(label).not.toBeNull();
-      expect(label.style.top).toBe("-1.5px");
-      expect(label.style.borderRadius).toBe("0px 0px 3px 3px");
+      expect(label.style.top).toBe("4px");
+      expect(label.style.bottom).toBe("auto");
       el.remove();
     });
 
-    it("clears inline label top when the padded block top is not above the viewport", () => {
+    it("keeps the label above the box when there is room", () => {
       mode = createMode();
       mode.activate();
       const el = blockEl();
       el.getBoundingClientRect = () => ({
         x: 10,
-        y: 20,
+        y: 200,
         width: 40,
         height: 30,
-        top: 20,
+        top: 200,
         right: 50,
-        bottom: 50,
+        bottom: 230,
         left: 10,
       });
       document.body.appendChild(el);
@@ -485,6 +497,19 @@ describe("InspectMode", () => {
       expect(el.getAttribute("tabindex")).toBeNull();
       expect(el.getAttribute("aria-label")).toBeNull();
     });
+
+    it("leaves inert <template data-block-id> markers alone", () => {
+      mode = createMode();
+      const marker = document.createElement("template");
+      marker.setAttribute("data-block-id", "uuid-1");
+      const el = blockEl("uuid-1", "Text Block");
+      document.body.append(marker, el);
+      mode._enableBlockAccessibility();
+      expect(marker.getAttribute("role")).toBeNull();
+      expect(marker.getAttribute("tabindex")).toBeNull();
+      expect(el.getAttribute("role")).toBe("button");
+      marker.remove();
+    });
   });
 
   // --- Event handling ---
@@ -548,22 +573,19 @@ describe("InspectMode", () => {
   // --- CSS-in-JS removal ---
 
   describe("CSS-in-JS removal", () => {
-    it("_createOverlay does not set inline cssText", () => {
+    it("_createOverlay keeps the overlay out of the page flow before CSS loads", () => {
       mode = createMode();
       mode.activate();
       const overlay = document.getElementById("wagtail-inspect-overlay");
       expect(overlay).not.toBeNull();
-      expect(overlay.style.cssText).toBe("");
+      expect(overlay.style.position).toBe("fixed");
+      expect(overlay.style.pointerEvents).toBe("none");
     });
 
-    it("_injectStyles only writes :root custom properties", () => {
+    it("_injectStyles adds no inline <style> element (strict style-src CSP)", () => {
       mode = createMode();
       mode.activate();
-      const style = document.getElementById("wagtail-inspect-styles");
-      expect(style).not.toBeNull();
-      expect(style.textContent).toContain("--wagtail-inspect-color");
-      expect(style.textContent).not.toContain("cursor: crosshair");
-      expect(style.textContent).not.toContain("focus-visible");
+      expect(document.querySelector("style#wagtail-inspect-styles")).toBeNull();
     });
 
     it("activate adds wagtail-inspect-active class to documentElement", () => {

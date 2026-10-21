@@ -13,6 +13,7 @@
 
       this.editUrlValue = "";
       this.apiUrl = "";
+      this.cssUrl = "";
       this.pageIdValue = 0;
       this.inspectMode = null;
 
@@ -46,6 +47,7 @@
         const config = JSON.parse(configElement.textContent);
         this.editUrlValue = config.editUrl || "";
         this.apiUrl = config.apiUrl || "";
+        this.cssUrl = config.cssUrl || "";
         this.pageIdValue = config.pageId || 0;
       } catch (e) {
         console.warn("Inspect blocks: failed to parse configuration", e);
@@ -67,6 +69,7 @@
 
     activate() {
       this.inspectMode = new window.WagtailInspectMode(document, {
+        stylesheetUrl: this.cssUrl,
         onBlockClick: (blockId) => {
           this.navigateToBlock(blockId);
           this.deactivate();

@@ -1,14 +1,15 @@
-# No Automated Test Suite
+# Test coverage & CI follow-ups
 
 **Labels:** `testing`, `risk`, `quality`
-**Priority:** High
+**Priority:** Medium
 
 ## Status
 
-Test infrastructure is in place (pytest, pytest-django, `testapp/` with a `TestPage` model,
+Test infrastructure is in place (pytest, pytest-django, demo `testproject` / `testapp` models,
 `RequestFactory` used for view tests). Core Python, JavaScript (Bun), and Playwright E2E tests
-are implemented locally (`just test`, `just test-e2e`). **CI:** there is no `.github/workflows`
-in this repo yet — automated runs on every push are not configured here.
+run locally via `just test` / `just test-all`.
+
+**CI:** [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs on pushes and pull requests to `main`: dependency install, `just pre-commit --all-files`, `just lint --no-fix`, Playwright Chromium + `just test-all`, and `uv build`. This issue tracks **remaining coverage gaps** (see checklists below), not absence of automation.
 
 Userbar visibility is enforced in `add_inspect_blocks_item()` (`construct_wagtail_userbar` hook)
 with early returns, not only via `InspectBlocksUserbarItem.is_shown()` — see `test_wagtail_hooks.py`.
@@ -95,4 +96,4 @@ a classic browser script. Run with `bun test tests/frontend` (see [package.json]
 
 - [ ] Python test suite covers every checkbox above (see remaining gaps, e.g. `render_as_block` integration)
 - [x] JavaScript test suite covers all JS cases listed under `InspectMode`
-- [ ] Tests run in CI on every push (no workflow files in repo yet)
+- [x] Tests run in CI on every push / PR to `main` (see `ci.yml`)

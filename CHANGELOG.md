@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-18
+
+### Fixed
+
+- **Inspect blocks** in the standalone preview userbar works under a strict
+  `script-src` Content Security Policy (nonce, no `'unsafe-inline'`). Assets now load
+  through the userbar item's `media` instead of an inline loader script.
+- Editor preview panel: inspect follows Wagtail 6+ iframe swaps by listening for
+  `w-preview:loaded`, and never targets the proxy iframe that is still loading.
+- `<template data-block-id>` elements in host pages are no longer treated as blocks
+  (hover, keyboard focus, and child augmentation).
+
+### Added
+
+- **Inspect blocks** on live pages for users who can edit the page
+  (`WAGTAIL_INSPECT_LIVE_PAGES`, default `True`). Only those users' responses get the
+  `data-block-*` attributes; the block map API serves the published body
+  (`?source=live`).
+
+### Changed
+
+- The userbar item is no longer added inside the editor preview panel, where Wagtail
+  hides the userbar; the panel's crosshairs control drives inspect there.
+
 ## [0.1.0] - 2025-03-26
 
 ### Added
@@ -16,5 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preview-only DOM attributes (`data-block-id`, `data-block-type`, `data-block-label`) and admin JSON API for the block map.
 - Support for Django 4.2+ and Wagtail 5, 6, and 7 (Python 3.12+).
 
-[Unreleased]: https://github.com/lincolnloop/wagtail-inspect/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/lincolnloop/wagtail-inspect/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/lincolnloop/wagtail-inspect/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/lincolnloop/wagtail-inspect/releases/tag/v0.1.0

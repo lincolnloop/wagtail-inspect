@@ -151,3 +151,24 @@ describe("_repairEmptyLabels (via augmentPreviewBlocks)", () => {
     expect(el.dataset.blockLabel).toBe("Existing Label");
   });
 });
+
+describe("augmentPreviewBlocks with template markers", () => {
+  it("annotates children of the real element, not a <template> with the same id", () => {
+    const parentId = "parent-uuid";
+    const childId = "child-uuid";
+
+    const marker = document.createElement("template");
+    marker.setAttribute("data-block-id", parentId);
+    const parent = makeAnnotatedBlock(parentId, "cards", "Cards");
+    const child = document.createElement("article");
+    parent.appendChild(child);
+    document.body.append(marker, parent);
+
+    WagtailInspectAugment.augmentPreviewBlocks({
+      [parentId]: { type: "cards", label: "Cards", children: [childId] },
+      [childId]: { type: "card", label: "Card", children: [] },
+    });
+
+    expect(child.dataset.blockId).toBe(childId);
+  });
+});

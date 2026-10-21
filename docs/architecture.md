@@ -41,17 +41,19 @@ graph TD
     StimulusApp["Stimulus Application"]
     WagtailHooks["Hook Registry"]
     BlockRendering["Block Rendering\n(BoundBlock.render / render_as_block)"]
+    ListIter["ListValue.__iter__\n(list block loops)"]
     PreviewMixin["PreviewableMixin.make_preview_request"]
     UserbarShadow["Userbar (Shadow DOM)"]
   end
 
   AppConfig -->|"ready()"| Patches
   Patches -->|"monkey-patches"| BlockRendering
+  Patches -->|"monkey-patches"| ListIter
   Patches -->|"monkey-patches"| PreviewMixin
   Patches -->|"reads / sets"| Init
   Patches -->|"imports"| BlockMap
 
-  PreviewMixin -->|"after render: snapshots"| Init
+  PreviewMixin -->|"after original returns: snapshots"| Init
   BlockMap --> Init
 
   Views -->|"reads _preview_block_maps"| Init
@@ -138,7 +140,33 @@ Used when an editor opens the full preview at `/cms/pages/{id}/edit/preview/`.
 
 ## Block Rendering Pipeline
 
-The Python side patches Wagtail's block rendering so that every `BoundBlock` with a UUID has its HTML output annotated with `data-block-*` attributes. This happens at Django startup time via the `AppConfig.ready()` hook.
+The Python side patches Wagtail so that **during preview only**, UUID-bearing blocks get `data-block-*` on their HTML. Patches are installed once at Django startup (`AppConfig.ready()` → `apply_patches()`). **Live pages** (no preview) see `preview_active` false, so `BoundBlock` output is unchanged and `ListValue.__iter__` delegates to Wagtail’s original iterator.
+
+### The four patches (what wraps what)
+
+| Order in `apply_patches()` | Target | Patched method | Role |
+| -------------------------- | ------ | -------------- | ---- |
+| 1 | `wagtail.blocks.BoundBlock` | `render` | After each child render from stream-level paths, run `_wrap_if_preview` when preview + `.id`. |
+| 2 | `BoundBlock` | `render_as_block` | Same wrapper when templates use explicit `{% include_block %}`. |
+| 3 | `PreviewableMixin` | `make_preview_request` | Sets `preview_active` for the **entire** call to Wagtail’s original implementation, then snapshots the block map; `finally` resets the token. |
+| 4 | `wagtail.blocks.list_block.ListValue` | `__iter__` | If `preview_active`: yield `_ListChildProxy` per `bound_blocks` so loops still see value-like objects but `{% include_block x %}` hits `render_as_block` with a UUID; else call stock `__iter__`. |
+
+**Guards and shared logic**
+
+- **Wrapping** only runs when `preview_active.get()` is true **and** `getattr(self, "id", None)` is set (StreamField / list children with UUIDs). Plain `BoundBlock` instances without `.id` are left alone.
+- **Type and label** on the wire come from `block_map.resolve_block_type` / `resolve_block_label` inside `_wrap_if_preview`, so Python-tagged DOM matches the semantics of `flat_block_map_for_instance`.
+- **Startup:** each patch goes through `_apply_patch`, which skips if already applied and **logs and continues** if a target is missing or raises — the site should still boot.
+- **Wagtail version:** if `wagtail.VERSION` is outside `TESTED_WAGTAIL_VERSIONS` (5 / 6 / 7), `apply_patches()` logs a warning; patches still run.
+
+### End-to-end preview timeline
+
+1. Editor triggers preview → Wagtail calls `PreviewableMixin.make_preview_request` (patched).
+2. Patch sets `preview_active` token, then calls the **original** method. Everything that runs inside that call (including template render) sees `preview_active.get() == True`.
+3. Stream templates hit `patched_bound_block_render` / `patched_bound_block_render_as_block` → `_wrap_if_preview`.
+4. List templates iterate a `ListValue` → `patched_list_value_iter` yields proxies → `{% include_block item %}` → `render_as_block` → same `_wrap_if_preview`.
+5. Original `make_preview_request` returns → patch stores `_preview_block_maps[page_pk] = flat_block_map_for_instance(self)` (UUIDs aligned with the HTML just produced), then **`finally`** resets `preview_active`.
+
+**After step 5**, the ContextVar is false again, so any code that runs later in the same thread of execution but outside that preview scope does not wrap blocks.
 
 ```mermaid
 flowchart TD
@@ -146,35 +174,37 @@ flowchart TD
   B --> C["patches.apply_patches()"]
   C --> D1["Patch BoundBlock.render"]
   C --> D2["Patch BoundBlock.render_as_block"]
-  C --> D3["Patch ListValue.__iter__"]
-  C --> D4["Patch PreviewableMixin.make_preview_request"]
+  C --> D3["Patch PreviewableMixin.make_preview_request"]
+  C --> D4["Patch ListValue.__iter__"]
 
-  subgraph previewRequest ["At preview request time"]
-    PR["make_preview_request() called"]
-    PR --> CV["preview_active.set(True)\n(ContextVar)"]
-    CV --> SR["serve_preview() renders template"]
-    SR --> BM["flat_block_map_for_instance(self)\nsnapshot into _preview_block_maps"]
-    BM --> FN["preview_active.reset(token)\n(in finally)"]
+  subgraph previewRequest ["One preview request (patched make_preview_request)"]
+    PR["Enter patched_make_preview_request"]
+    PR --> CV["preview_active.set(True)"]
+    CV --> Inner["Call original make_preview_request\n(Wagtail builds response + renders templates)"]
+    Inner --> Snap["On success: _preview_block_maps[pk] = flat_block_map_for_instance(self)"]
+    Snap --> FN["finally: preview_active.reset(token)"]
   end
 
-  subgraph rendering ["At render time"]
+  subgraph rendering ["While inside original make_preview_request (templates rendering)"]
     E1["{{ page.body }} or {% include_block page.body %}"] --> F1["StreamBlock.render_basic\n→ child.render(context)"]
     E2["{% for block in page.body %}{% include_block block %}"] --> F2["IncludeBlockNode\n→ block.render_as_block(context)"]
+    E3["{% for item in list_value %}\n{% include_block item %}"] --> F3["ListValue.__iter__ → _ListChildProxy\n→ render_as_block"]
 
-    F1 --> G["patched_bound_block_render\n(or render_as_block)"]
+    F1 --> G["patched_bound_block_*\n→ _wrap_if_preview"]
     F2 --> G
+    F3 --> G
 
-    G --> H{"preview_active.get()\nand self.id?"}
-    H -- Yes --> I["_wrap_if_preview():\nAnnotate output with\ndata-block-id / type / label"]
-    H -- No --> J["Return original output unchanged"]
+    G --> H{"preview_active\nand self.id?"}
+    H -- Yes --> I["Inject data-block-* or\ndisplay:contents wrapper"]
+    H -- No --> J["Pass through unchanged"]
   end
 
-  CV -.->|"ContextVar visible\nto all nested calls"| H
+  CV -.->|"visible to all nested renders"| H
 ```
 
-### Three Patches, Two Rendering Entry Points
+### Four patches, two `BoundBlock` rendering entry points
 
-Two `BoundBlock` methods are patched because Wagtail templates use two distinct rendering paths:
+Besides preview lifecycle and list iteration (see below), two `BoundBlock` methods are patched because Wagtail templates use two distinct rendering paths:
 
 | Template syntax                                         | Wagtail method patched       | Patch function                        | Notes                                               |
 | ------------------------------------------------------- | ---------------------------- | ------------------------------------- | --------------------------------------------------- |
@@ -183,38 +213,48 @@ Two `BoundBlock` methods are patched because Wagtail templates use two distinct 
 
 Both methods delegate to `self.block.render(self.value, context)` internally; they never call each other, so there is no double-annotation.
 
+`ListValue.__iter__` is patched so that during preview, `{% for x in value.items %}{% include_block x %}` yields `_ListChildProxy` objects that still behave like values but carry UUIDs for wrapping. `PreviewableMixin.make_preview_request` is patched to set `preview_active` around the preview request and snapshot `flat_block_map_for_instance` into `_preview_block_maps` after the response is built.
+
 ### Preview Detection via ContextVar
 
 Preview detection uses a `ContextVar[bool]` named `preview_active` (defined in `__init__.py`), set by patching `PreviewableMixin.make_preview_request`:
 
 ```mermaid
 sequenceDiagram
-  participant Wagtail as Wagtail Preview
+  participant Wagtail as Wagtail (caller)
   participant Patch as patched_make_preview_request
   participant CV as preview_active (ContextVar)
-  participant Render as BoundBlock.render
+  participant Inner as original make_preview_request
+  participant Render as BoundBlock.render / ListValue.__iter__
   participant Cache as _preview_block_maps
 
   Wagtail->>Patch: make_preview_request(...)
-  Patch->>CV: preview_active.set(True)
-  Patch->>Wagtail: serve_preview() [renders template]
-  Wagtail->>Render: child.render(context)
-  Render->>CV: preview_active.get() → True
-  Render->>Render: annotate output with data-block-id
+  Patch->>CV: set(True) → token
+  Patch->>Inner: call original(self, *args, **kwargs)
+  Note over Inner,Render: Template render runs here; nested code uses preview_active
+  Inner->>Render: block rendering / list iteration
+  Render->>CV: get() → True
+  Render->>Render: wrap output or yield proxy
+  Inner-->>Patch: response
   Patch->>Cache: _preview_block_maps[pk] = flat_block_map_for_instance(self)
-  Patch->>CV: preview_active.reset(token) [in finally]
+  Patch->>CV: reset(token) [in finally, even on error]
+  Patch-->>Wagtail: response
 ```
 
-`ContextVar` is async-safe (unlike `threading.local`) and is visible to all rendering calls in the same execution context without requiring a template context argument.
+`ContextVar` is async-safe (unlike `threading.local`) and is visible to all rendering calls that happen **inside** the original `make_preview_request` without passing anything through the Django template context.
 
-The block map snapshot is taken **after** `serve_preview()` returns, at which point `self` has been updated with form-submitted field data. This means the map's UUIDs match those in the just-rendered DOM, even when Wagtail's form round-trip produces different UUIDs from the saved revision.
+The block map snapshot runs **after** the original method returns successfully, still inside the patch body but **before** `preview_active.reset`. By then `self` reflects form-submitted preview data, so the map’s UUIDs match the HTML in the response, even when Wagtail’s preview round-trip assigns different UUIDs than the saved revision.
+
+### Why `ListValue.__iter__` is separate from the two `BoundBlock` patches
+
+`ListChild` objects are `BoundBlock` subclasses, so `render` / `render_as_block` already wrap them **when** the template reaches them through `{% include_block item %}`. The problem is templates that loop with `{% for item in list_value %}`: Wagtail’s default `ListValue.__iter__` can yield plain values, so `include_block` never receives a UUID-bearing bound block. The preview-only iterator swaps in `_ListChildProxy` so the same templates keep working (`item.field`, `{% include_block item %}`, etc.) while inspect wrapping can attach to list items.
 
 ### Why `BoundBlock` Instead of `IncludeBlockNode`
 
 `BoundBlock` is the common base class of both `StreamValue.StreamChild` and `ListValue.ListChild`. Patching at this level:
 
-- Covers **both** rendering entry points (`render` for stream-level iteration, `render_as_block` for explicit `{% include_block %}`).
-- **Automatically covers `ListChild`** objects (UUID-bearing `ListBlock` items), which `IncludeBlockNode` patching missed.
+- Covers **both** stream rendering entry points (`render` for stream-level iteration, `render_as_block` for explicit `{% include_block %}`).
+- **Covers `ListChild`** when they are rendered through those methods (and the `ListValue` patch fixes loops that would otherwise bypass them).
 - Guards against wrapping by checking `getattr(self, "id", None)` — plain `BoundBlock` instances with no `.id` are silently skipped.
 
 ### Block Annotation Strategy
@@ -249,7 +289,16 @@ _getBlockRect(element) {
 
 ## Block Map Augmentation Pipeline
 
-Some blocks are invisible to the Python rendering patches because their DOM elements are created by template code that doesn't call `BoundBlock.render` or `BoundBlock.render_as_block` (e.g. `django-includecontents` components, or raw `{% for item in value.items %}` loops without `{% include_block %}`). The augmentation pipeline handles these:
+Some blocks are invisible to the Python rendering patches because their DOM nodes are built without going through `BoundBlock.render` / `render_as_block` (e.g. `django-includecontents`, or hand-written loops over field values). **`flat_block_map_for_instance`** still knows the tree from the page model, so the API + **`inspect-augment.js`** can attach `data-block-*` in the preview document after load.
+
+### API: live preview map vs revision fallback
+
+`PageInspectView` (GET `/wagtail-inspect/api/page/<id>/`) chooses the map in this order:
+
+1. **In-memory cache** — If `page.pk` exists in `_preview_block_maps`, return that dict immediately. This is the snapshot taken at the end of the last `make_preview_request` for this page, so UUIDs match the **current** preview HTML (including unsaved editor state).
+2. **Fallback** — Otherwise build from `get_latest_revision().as_object()` if a revision exists, else the live page. Used after a full reload of standalone preview, or any caller that hits the API without a recent preview render in this process.
+
+Authenticated editors with `can_edit()` only; otherwise 401/403/404 as appropriate.
 
 ```mermaid
 sequenceDiagram
@@ -261,7 +310,11 @@ sequenceDiagram
 
   Controller->>API: GET /wagtail-inspect/api/page/{id}/
   API->>Cache: lookup _preview_block_maps[pk]
-  Cache-->>API: block map (matches live DOM UUIDs)
+  alt cache hit
+    Cache-->>API: map from last preview
+  else cache miss
+    API->>API: flat_block_map_for_instance(revision or page)
+  end
   API-->>Controller: { blocks: { uuid: { type, label, children } } }
   Controller->>Augment: augmentPreviewBlocks(blocks)
   Augment->>DOM: find unannotated child elements
@@ -269,7 +322,7 @@ sequenceDiagram
   Augment->>DOM: repair empty labels on already-annotated elements
 ```
 
-`PreviewInspectController` additionally injects `inspect-augment.js` into the preview iframe before calling `augmentPreviewBlocks`, since the script must run inside the same document as the DOM it is annotating.
+`PreviewInspectController` injects `inspect-augment.js` into the **preview iframe** before calling `augmentPreviewBlocks`, because the script must run in the same document as the DOM it mutates. The userbar path loads the same script on the standalone preview page, then calls `WagtailInspectAugment.augmentPreviewBlocks` on `document`.
 
 ## Inspect Mode Interaction Flow
 

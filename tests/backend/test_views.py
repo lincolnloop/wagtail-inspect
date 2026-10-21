@@ -242,3 +242,27 @@ def test_editor_response_blocks_include_children_arrays(rf, make_test_page, monk
     data = json.loads(response.content)
     assert data["blocks"]["a"]["children"] == ["b"]
     assert data["blocks"]["b"]["children"] == []
+
+
+def test_live_source_uses_the_published_page_not_the_draft(rf, make_test_page, monkeypatch_inspect_editor, monkeypatch):
+    page = make_test_page()
+    wagtail_inspect._preview_block_maps[page.pk] = {"draft": {}}
+
+    class _Rev:
+        def as_object(self):
+            raise AssertionError("live map must not read the latest revision")
+
+    monkeypatch.setattr(Page, "get_latest_revision", lambda self: _Rev())
+    called_with = []
+    monkeypatch_inspect_editor(flat_map_fn=lambda p: called_with.append(p) or {"live": {}})
+
+    try:
+        request = rf.get(f"/wagtail-inspect/api/page/{page.pk}/?source=live")
+        request.user = _AuthUser()
+        response = PageInspectView.as_view()(request, page_id=page.pk)
+    finally:
+        wagtail_inspect._preview_block_maps.pop(page.pk, None)
+
+    assert response.status_code == 200
+    assert json.loads(response.content)["blocks"] == {"live": {}}
+    assert [p.pk for p in called_with] == [page.pk]

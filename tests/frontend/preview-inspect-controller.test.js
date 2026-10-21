@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "bun:test";
+import { describe, it, expect, beforeAll, afterEach } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -111,5 +111,77 @@ describe("PreviewInspectController.injectAugmentScript", () => {
     } finally {
       globalThis.wagtailInspectConfig = prev;
     }
+  });
+});
+
+function previewPanel({ proxy = false } = {}) {
+  const panel = document.createElement("div");
+  panel.setAttribute("data-controller", "w-preview");
+  panel.setAttribute("data-w-preview-proxy-class", "w-preview__proxy");
+  const current = document.createElement("iframe");
+  current.id = "w-preview-iframe";
+  current.className = "w-preview__iframe";
+  current.setAttribute("data-w-preview-target", "iframe");
+  panel.appendChild(current);
+  let proxyIframe = null;
+  if (proxy) {
+    // What Wagtail's reloadIframe() inserts: a clone without id, with the proxy class.
+    proxyIframe = current.cloneNode();
+    proxyIframe.removeAttribute("id");
+    proxyIframe.classList.add("w-preview__proxy");
+    current.insertAdjacentElement("afterend", proxyIframe);
+  }
+  document.body.appendChild(panel);
+  return { panel, current, proxyIframe };
+}
+
+describe("PreviewInspectController.getPreviewIframe", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("returns the current iframe while a proxy iframe is loading", () => {
+    const { panel, current } = previewPanel({ proxy: true });
+    const C = PreviewInspectController();
+    expect(C.prototype.getPreviewIframe.call({ element: panel })).toBe(current);
+  });
+
+  it("returns the swapped-in iframe once Wagtail promotes the proxy", () => {
+    const { panel, current, proxyIframe } = previewPanel({ proxy: true });
+    current.remove();
+    proxyIframe.id = "w-preview-iframe";
+    proxyIframe.classList.remove("w-preview__proxy");
+    const C = PreviewInspectController();
+    expect(C.prototype.getPreviewIframe.call({ element: panel })).toBe(proxyIframe);
+  });
+});
+
+describe("PreviewInspectController.setupIframeLoadAction", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("listens for w-preview:loaded instead of the iframe load event on swapping previews", () => {
+    const { panel, current } = previewPanel();
+    const C = PreviewInspectController();
+    const ctx = Object.create(C.prototype);
+    ctx.element = panel;
+    ctx.handleIframeLoad = () => {};
+    ctx.setupIframeLoadAction();
+    expect(panel.getAttribute("data-action")).toContain(
+      "w-preview:loaded->preview-inspect#handleIframeLoad",
+    );
+    expect(current.getAttribute("data-action") || "").not.toContain("preview-inspect");
+  });
+
+  it("keeps the iframe load action on previews without a proxy class", () => {
+    const { panel, current } = previewPanel();
+    panel.removeAttribute("data-w-preview-proxy-class");
+    const C = PreviewInspectController();
+    const ctx = Object.create(C.prototype);
+    ctx.element = panel;
+    ctx.handleIframeLoad = () => {};
+    ctx.setupIframeLoadAction();
+    expect(current.getAttribute("data-action")).toContain("load->preview-inspect#handleIframeLoad");
   });
 });

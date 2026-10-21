@@ -83,13 +83,16 @@ Using a `ContextVar` rather than `threading.local` makes preview detection async
 
 ```python
 class WagtailInspectConfig(AppConfig):
-    name = "ll.apps.wagtail_inspect"
+    """Django app configuration for Wagtail Inspect."""
+
+    name = "wagtail_inspect"
     label = "wagtail_inspect"
     verbose_name = "Wagtail Inspect"
     default_auto_field = "django.db.models.AutoField"
 
-    def ready(self):
+    def ready(self) -> None:
         from . import patches
+
         patches.apply_patches()
 ```
 
@@ -104,9 +107,9 @@ The patches applied at startup:
 3. `ListValue.__iter__` → `patched_list_value_iter` (list iteration yields `_ListChildProxy` with UUIDs)
 4. `PreviewableMixin.make_preview_request` → `patched_make_preview_request` (sets/resets `preview_active` ContextVar, snapshots block map)
 
-### Why `label` is explicit
+### `name` and `label`
 
-Both `name` and `label` are set so the `label` stays stable even if the app is installed under a different Python path.
+`name` must match the string used in `INSTALLED_APPS` (`"wagtail_inspect"`). `label` is set explicitly to the same value so Django’s app registry key stays predictable for migrations and hooks regardless of import path.
 
 ---
 
@@ -308,13 +311,13 @@ def patched_make_preview_request(self, *args, **kwargs):
         preview_active.reset(token)
 ```
 
-`PreviewableMixin.make_preview_request` is the correct entry point for preview detection because it fires **before** `serve_preview()` renders the page template. Setting the ContextVar here means it is visible to all nested block rendering calls in that execution context.
+`PreviewableMixin.make_preview_request` is the correct entry point for preview detection: the patch sets `preview_active` for the duration of the original method (which performs the preview work, including template rendering). Setting the ContextVar for that scope means it is visible to all nested block rendering calls in that execution context.
 
 **Block map snapshot:** after the original `make_preview_request` returns, `self` has been updated with form-submitted field data (Wagtail applies the preview form before rendering). Calling `flat_block_map_for_instance(self)` at this point therefore yields UUIDs that match the just-rendered preview DOM. The map is stored in `_preview_block_maps[page_pk]` so `PageInspectView` can serve it via the API.
 
-**`\*args, **kwargs`pass-through:** Wagtail's signature for`make_preview_request` has changed across versions. The variadic pass-through ensures new parameters added by future Wagtail versions are forwarded automatically without requiring a plugin update.
+**`*args, **kwargs` pass-through:** Wagtail's signature for `make_preview_request` has changed across versions. The variadic pass-through ensures new parameters added by future Wagtail versions are forwarded automatically without requiring a plugin update.
 
-The `finally` block resets the ContextVar token even if `serve_preview()` raises an exception, preventing leakage between concurrent requests.
+The `finally` block resets the ContextVar token even if the preview request raises an exception, preventing leakage between concurrent requests.
 
 ### `apply_patches()` -- The Entry Point
 
