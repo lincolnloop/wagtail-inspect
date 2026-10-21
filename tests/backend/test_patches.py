@@ -1,259 +1,34 @@
-"""Tests for the highest-risk behaviours in patches.py:
+"""Inspect's patches. Block marking itself is tested in wagtail-block-ids.
 
-- _wrap_if_preview injects data-* attrs onto the root element when active with id
-- _wrap_if_preview falls back to display:contents wrapper for text-only output
-- _wrap_if_preview passes through when active but block has no id (plain BoundBlock)
-- _wrap_if_preview passes through when preview is inactive
-- _inject_attrs_into_root injects into the first element of the output
-- apply_patches() is idempotent — calling twice does not lose the original method
-- preview_active ContextVar is always reset, even when the original raises
-- patched_list_value_iter yields plain values when preview is inactive
-- patched ListValue.__iter__ yields _ListChildProxy with ids when preview is active
-- ListValue.__iter__ is replaced after apply_patches()
+- make_preview_request renders inside a wrapping marking scope, forwards arguments,
+  snapshots the block map, and always closes the scope
+- the live-page marker accepts editors only, and respects WAGTAIL_INSPECT_LIVE_PAGES
+- apply_patches() is idempotent and registers the live-page marker once
 """
 
+from types import SimpleNamespace
+
 import pytest
-from wagtail import blocks
-from wagtail.blocks import BoundBlock
-from wagtail.blocks.list_block import ListValue
+from wagtail_block_ids import is_marking
+from wagtail_block_ids import marks as block_ids_marks
 
 import wagtail_inspect.patches as patches_module
-from wagtail_inspect import preview_active
-from wagtail_inspect.patches import (
-    _inject_attrs_into_root,
-    _is_multi_root_fragment,
-    _ListChildProxy,
-    _wrap_if_preview,
-    apply_patches,
-    patched_bound_block_render,
-    patched_list_value_iter,
-    patched_make_preview_request,
-)
-
-# ---------------------------------------------------------------------------
-# Minimal stand-ins for BoundBlock subclasses
-# ---------------------------------------------------------------------------
+from wagtail_inspect.patches import apply_patches, mark_live_page, patched_make_preview_request
 
 
-class _MockBlock:
-    name = "text"
-    label = "Text"
-
-
-class _BoundBlockWithId:
-    """Mimics StreamChild / ListChild — has a UUID."""
-
-    id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-    block_type = "text"
-    block = _MockBlock()
-
-
-class _BoundBlockWithoutId:
-    """Mimics a plain BoundBlock — no UUID, must never be wrapped."""
-
-    id = None
-    block = _MockBlock()
-
-
-# ---------------------------------------------------------------------------
-# _wrap_if_preview
-# ---------------------------------------------------------------------------
-
-
-def test_wrap_if_preview_injects_into_root_element():
-    """When the block output has an HTML element, the data-* attributes are
-    injected directly onto it — no wrapper div and no display:contents.
-    """
-    token = preview_active.set(True)
+def test_make_preview_request_renders_inside_a_wrapping_scope():
+    key = "PreviewableMixin.make_preview_request"
+    saved = patches_module._originals[key]
+    seen = []
+    patches_module._originals[key] = lambda self, *a, **kw: seen.append(block_ids_marks._scope.get())
     try:
-        result = str(_wrap_if_preview(_BoundBlockWithId(), "<section>hello</section>"))
-        assert result.startswith('<section data-block-id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"')
-        assert 'data-block-type="text"' in result
-        assert 'data-block-label="Text"' in result
-        assert "hello" in result
-        assert 'style="display:contents"' not in result
-        assert "<div" not in result
+        patched_make_preview_request(object())
     finally:
-        preview_active.reset(token)
+        patches_module._originals[key] = saved
 
-
-def test_wrap_if_preview_fallback_for_text_only_output():
-    """When the block output is plain text (no HTML element), the display:contents
-    wrapper is used as a fallback so the block remains queryable.
-    """
-    token = preview_active.set(True)
-    try:
-        result = str(_wrap_if_preview(_BoundBlockWithId(), "hello"))
-        assert 'data-block-id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"' in result
-        assert 'data-block-type="text"' in result
-        assert 'style="display:contents"' in result
-        assert "hello" in result
-    finally:
-        preview_active.reset(token)
-
-
-def test_wrap_if_preview_multi_root_fragment_uses_display_contents_wrapper():
-    """Markdown-style output with several top-level siblings must wrap the whole
-    fragment so data-block-* is not applied only to the first <p>.
-    """
-    token = preview_active.set(True)
-    try:
-        fragment = "<p>first</p><p>second</p>"
-        result = str(_wrap_if_preview(_BoundBlockWithId(), fragment))
-        assert 'style="display:contents"' in result
-        assert 'data-block-id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"' in result
-        assert "first" in result and "second" in result
-        assert "data-block-id" not in fragment  # inner HTML unchanged
-        assert result.count("data-block-id=") == 1
-        assert "<p" in result
-        assert "data-block-id" not in result.split("<p", 1)[1].split(">", 1)[0]
-    finally:
-        preview_active.reset(token)
-
-
-def test_wrap_if_preview_leading_comment_single_root_still_injects():
-    """A leading HTML comment does not force multi-root wrapping."""
-    token = preview_active.set(True)
-    try:
-        result = str(
-            _wrap_if_preview(
-                _BoundBlockWithId(),
-                "<!-- note --><p>only</p>",
-            )
-        )
-        assert 'style="display:contents"' not in result
-        assert result.startswith("<!-- note --><p data-block-id=")
-        assert "only" in result
-    finally:
-        preview_active.reset(token)
-
-
-def test_fragment_needs_wrapper_text_before_element():
-    assert _is_multi_root_fragment("intro<p>x</p>") is True
-
-
-def test_fragment_needs_wrapper_false_for_single_div():
-    assert _is_multi_root_fragment('<div class="md"><p>a</p></div>') is False
-
-
-def test_fragment_needs_wrapper_false_for_void_img_only():
-    """A lone void element is still a single top-level root."""
-    assert _is_multi_root_fragment('<img src="/x.png" alt="">') is False
-
-
-def test_fragment_needs_wrapper_true_for_void_img_followed_by_block_element():
-    assert _is_multi_root_fragment("<img><p>a</p>") is True
-
-
-def test_fragment_needs_wrapper_false_for_br_inside_single_p():
-    """Void tags inside a non-void wrapper do not create extra top-level roots."""
-    assert _is_multi_root_fragment("<p>line<br>break</p>") is False
-
-
-def test_list_child_proxy_len_and_bool():
-    class _Item(blocks.StructBlock):
-        title = blocks.CharBlock()
-
-        class Meta:
-            label = "Item"
-
-    list_block = blocks.ListBlock(_Item())
-    list_value = list_block.to_python([{"title": "a"}, {"title": "b"}])
-
-    token = preview_active.set(True)
-    try:
-        proxies = list(patched_list_value_iter(list_value))
-    finally:
-        preview_active.reset(token)
-
-    assert len(proxies[0]) == 1
-    assert bool(proxies[0]) is True
-    assert len(proxies[1]) == 1
-    assert bool(proxies[1]) is True
-
-
-def test_list_child_proxy_bool_false_for_empty_string_char_child():
-    list_block = blocks.ListBlock(blocks.CharBlock())
-    list_value = list_block.to_python([""])
-
-    token = preview_active.set(True)
-    try:
-        proxy = list(patched_list_value_iter(list_value))[0]
-    finally:
-        preview_active.reset(token)
-
-    assert bool(proxy) is False
-
-
-def test_inject_attrs_into_root_injects_before_existing_attrs():
-    """Attributes are injected after the tag name, before any existing attrs."""
-    output, ok = _inject_attrs_into_root('<div class="hero">content</div>', "id1", "hero", "Hero")
-    assert ok
-    assert output.startswith('<div data-block-id="id1"')
-    assert 'class="hero"' in output
-    assert "content" in output
-
-
-def test_inject_attrs_into_root_handles_leading_whitespace():
-    """Leading whitespace before the first tag is tolerated (common in Django templates)."""
-    output, ok = _inject_attrs_into_root("\n  <a href='/'>link</a>", "id2", "cta", "CTA")
-    assert ok
-    assert 'data-block-id="id2"' in output
-    assert "href='/'>" in output
-
-
-def test_inject_attrs_into_root_returns_false_for_plain_text():
-    """Plain text with no HTML element returns (original, False)."""
-    original = "just text"
-    output, ok = _inject_attrs_into_root(original, "id3", "text", "Text")
-    assert not ok
-    assert output == original
-
-
-def test_inject_attrs_into_root_escapes_label():
-    """Block labels with HTML special characters are escaped in the attribute value."""
-    output, ok = _inject_attrs_into_root("<span>x</span>", "id4", "t", 'Say "hello" & more')
-    assert ok
-    assert 'data-block-label="Say &quot;hello&quot; &amp; more"' in output
-
-
-def test_wrap_if_preview_skips_block_without_id_even_when_active():
-    """Plain BoundBlock instances (no .id) must never be wrapped."""
-    token = preview_active.set(True)
-    try:
-        result = _wrap_if_preview(_BoundBlockWithoutId(), "hello")
-        assert result == "hello"
-    finally:
-        preview_active.reset(token)
-
-
-def test_wrap_if_preview_skips_when_preview_is_inactive():
-    """Outside of a preview request nothing should be wrapped."""
-    assert preview_active.get() is False
-    result = _wrap_if_preview(_BoundBlockWithId(), "hello")
-    assert result == "hello"
-
-
-# ---------------------------------------------------------------------------
-# apply_patches() idempotency
-# ---------------------------------------------------------------------------
-
-
-def test_apply_patches_is_idempotent():
-    """apply_patches() is already called once by AppConfig.ready().
-    Calling it again must not overwrite the stored original — if it did,
-    _originals["BoundBlock.render"] would point to the patched version,
-    causing infinite recursion on every block render.
-    """
-    original_before = patches_module._originals["BoundBlock.render"]
-    apply_patches()
-    assert patches_module._originals["BoundBlock.render"] is original_before
-    assert BoundBlock.render is patched_bound_block_render
-
-
-# ---------------------------------------------------------------------------
-# ContextVar reset
-# ---------------------------------------------------------------------------
+    assert seen[0] is not None
+    assert seen[0].wrap is True
+    assert not is_marking()
 
 
 def test_patched_make_preview_request_forwards_unknown_kwargs():
@@ -281,7 +56,7 @@ def test_patched_make_preview_request_forwards_unknown_kwargs():
             "preview_mode": "edit",
             "extra_new_param": "surprise",
         }
-        assert preview_active.get() is False
+        assert not is_marking()
     finally:
         patches_module._originals[key] = saved
 
@@ -335,10 +110,9 @@ def test_make_preview_request_skips_snapshot_when_no_pk(monkeypatch):
         patches_module._originals[key] = saved
 
 
-def test_preview_active_always_reset_when_original_raises():
-    """The `finally` block in patched_make_preview_request guarantees that
-    preview_active is reset even when the underlying request handler raises.
-    Without it every subsequent request would have blocks wrapped.
+def test_marking_always_closed_when_original_raises():
+    """The marking scope around make_preview_request closes even when the
+    underlying request handler raises. Otherwise every later request would be marked.
     """
     key = "PreviewableMixin.make_preview_request"
     saved = patches_module._originals[key]
@@ -350,179 +124,14 @@ def test_preview_active_always_reset_when_original_raises():
     try:
         with pytest.raises(RuntimeError):
             patched_make_preview_request(object(), original_request=None)
-        assert preview_active.get() is False
+        assert not is_marking()
     finally:
         patches_module._originals[key] = saved
 
 
 # ---------------------------------------------------------------------------
-# ListValue.__iter__ patch (preview-gated)
+# Live-page marker
 # ---------------------------------------------------------------------------
-
-
-def test_patched_list_value_iter_yields_plain_values_when_preview_inactive():
-    """Outside preview, iteration matches stock Wagtail (plain child values)."""
-
-    class _Item(blocks.StructBlock):
-        title = blocks.CharBlock()
-
-        class Meta:
-            label = "Item"
-
-    list_block = blocks.ListBlock(_Item())
-    list_value = list_block.to_python([{"title": "a"}, {"title": "b"}])
-
-    assert preview_active.get() is False
-    iterated = list(patched_list_value_iter(list_value))
-    assert len(iterated) == 2
-    assert iterated[0] is list_value.bound_blocks[0].value
-    assert iterated[1] is list_value.bound_blocks[1].value
-
-
-def test_patched_list_value_iter_preview_yields_proxies_with_bound_block_face():
-    """During preview, each item is a _ListChildProxy: .id and render_as_block
-    for inspect, while .value matches the underlying ListChild.value.
-    """
-
-    class _Item(blocks.StructBlock):
-        title = blocks.CharBlock()
-
-        class Meta:
-            label = "Item"
-
-    list_block = blocks.ListBlock(_Item())
-    list_value = list_block.to_python([{"title": "a"}, {"title": "b"}])
-
-    token = preview_active.set(True)
-    try:
-        iterated = list(patched_list_value_iter(list_value))
-    finally:
-        preview_active.reset(token)
-
-    assert len(iterated) == 2
-    for i, proxy in enumerate(iterated):
-        assert isinstance(proxy, _ListChildProxy)
-        assert proxy.id == list_value.bound_blocks[i].id
-        assert proxy.value is list_value.bound_blocks[i].value
-        assert hasattr(proxy, "render_as_block")
-
-
-def test_patched_list_value_iter_preview_proxy_delegates_struct_fields():
-    """Dot and key access resolve like the plain StructValue (mapping tried first)."""
-
-    class _Item(blocks.StructBlock):
-        title = blocks.CharBlock()
-
-        class Meta:
-            label = "Item"
-
-    list_block = blocks.ListBlock(_Item())
-    list_value = list_block.to_python([{"title": "nested"}])
-
-    token = preview_active.set(True)
-    try:
-        proxy = list(patched_list_value_iter(list_value))[0]
-    finally:
-        preview_active.reset(token)
-
-    assert proxy.title == "nested"
-    assert proxy["title"] == "nested"
-
-
-def test_patched_list_value_iter_preview_proxy_iterates_stream_value():
-    """``for block in item`` in templates maps to iter(proxy.value) for StreamValue children."""
-    stream_block = blocks.StreamBlock([("text", blocks.CharBlock())])
-    list_block = blocks.ListBlock(stream_block)
-    # One list item = one stream (list of block dicts)
-    list_value = list_block.to_python([[{"type": "text", "value": "hello"}]])
-
-    token = preview_active.set(True)
-    try:
-        proxy = list(patched_list_value_iter(list_value))[0]
-    finally:
-        preview_active.reset(token)
-
-    inner = list(proxy)
-    assert len(inner) == 1
-    assert inner[0].value == "hello"
-
-
-def test_patched_list_value_iter_preview_proxy_str_uses_plain_value():
-    """``{{ item }}`` should stringify the child value, not BoundBlock HTML."""
-    list_block = blocks.ListBlock(blocks.CharBlock())
-    list_value = list_block.to_python(["plain"])
-
-    token = preview_active.set(True)
-    try:
-        proxy = list(patched_list_value_iter(list_value))[0]
-    finally:
-        preview_active.reset(token)
-
-    assert str(proxy) == "plain"
-
-
-def test_list_value_iteration_uses_patched_iter_on_class_non_preview():
-    """``list(ListValue)`` with preview off yields plain values."""
-
-    class _Item(blocks.StructBlock):
-        title = blocks.CharBlock()
-
-        class Meta:
-            label = "Item"
-
-    list_block = blocks.ListBlock(_Item())
-    list_value = list_block.to_python([{"title": "x"}])
-
-    assert preview_active.get() is False
-    iterated = list(list_value)
-    assert len(iterated) == 1
-    assert iterated[0] is list_value.bound_blocks[0].value
-
-
-def test_list_value_iteration_uses_patched_iter_on_class_preview():
-    """``list(ListValue)`` with preview on yields _ListChildProxy instances."""
-
-    class _Item(blocks.StructBlock):
-        title = blocks.CharBlock()
-
-        class Meta:
-            label = "Item"
-
-    list_block = blocks.ListBlock(_Item())
-    list_value = list_block.to_python([{"title": "x"}])
-
-    token = preview_active.set(True)
-    try:
-        iterated = list(list_value)
-    finally:
-        preview_active.reset(token)
-
-    assert len(iterated) == 1
-    assert isinstance(iterated[0], _ListChildProxy)
-    assert iterated[0].value is list_value.bound_blocks[0].value
-
-
-def test_list_value_iter_patch_applied_at_startup():
-    """apply_patches() installs ListValue.__iter__ replacement exactly once."""
-    assert "ListValue.__iter__" in patches_module._originals
-    assert ListValue.__dict__.get("__iter__") is patched_list_value_iter
-
-
-# ---------------------------------------------------------------------------
-# patched_page_serve: live pages for editors
-# ---------------------------------------------------------------------------
-
-
-class _LazyResponse:
-    """TemplateResponse stand-in: records whether preview_active was on at render."""
-
-    def __init__(self):
-        self.is_rendered = False
-        self.rendered_with_preview = None
-
-    def render(self):
-        self.rendered_with_preview = preview_active.get()
-        self.is_rendered = True
 
 
 class _ServePage:
@@ -536,29 +145,11 @@ class _ServePage:
 
 
 def _serve_request(*, authenticated=True):
-    from types import SimpleNamespace
-
     return SimpleNamespace(user=SimpleNamespace(is_authenticated=authenticated))
 
 
-@pytest.fixture
-def original_serve(monkeypatch):
-    seen = []
-
-    def fake_serve(page, request, *args, **kwargs):
-        seen.append(preview_active.get())
-        return _LazyResponse()
-
-    monkeypatch.setitem(patches_module._originals, "Page.serve", fake_serve)
-    return seen
-
-
-def test_page_serve_annotates_and_renders_for_editors(original_serve):
-    response = patches_module.patched_page_serve(_ServePage(editable=True), _serve_request())
-
-    assert original_serve == [True]
-    assert response.rendered_with_preview is True
-    assert preview_active.get() is False
+def test_live_page_marker_accepts_editors():
+    assert mark_live_page(_ServePage(editable=True), _serve_request()) is True
 
 
 @pytest.mark.parametrize(
@@ -569,24 +160,29 @@ def test_page_serve_annotates_and_renders_for_editors(original_serve):
     ],
     ids=["anonymous", "non-editor"],
 )
-def test_page_serve_leaves_other_visitors_untouched(original_serve, page, request_kwargs):
-    response = patches_module.patched_page_serve(page, _serve_request(**request_kwargs))
-
-    assert original_serve == [False]
-    assert response.is_rendered is False
+def test_live_page_marker_leaves_other_visitors_untouched(page, request_kwargs):
+    assert mark_live_page(page, _serve_request(**request_kwargs)) is False
 
 
-def test_page_serve_respects_live_pages_setting(original_serve, settings):
+def test_live_page_marker_respects_live_pages_setting(settings):
     settings.WAGTAIL_INSPECT_LIVE_PAGES = False
 
-    patches_module.patched_page_serve(_ServePage(editable=True), _serve_request())
-
-    assert original_serve == [False]
+    assert mark_live_page(_ServePage(editable=True), _serve_request()) is False
 
 
-def test_page_serve_is_patched():
-    from wagtail.models import Page
-
+def test_apply_patches_registers_the_wrapping_live_marker_once():
+    apply_patches()
     apply_patches()
 
-    assert Page.serve is patches_module.patched_page_serve
+    registered = [marker for marker in block_ids_marks._markers if marker.should_mark is mark_live_page]
+    assert len(registered) == 1
+    assert registered[0].wrap is True
+
+
+def test_apply_patches_is_idempotent():
+    from wagtail_inspect.patches import PreviewableMixin
+
+    original_before = patches_module._originals["PreviewableMixin.make_preview_request"]
+    apply_patches()
+    assert patches_module._originals["PreviewableMixin.make_preview_request"] is original_before
+    assert PreviewableMixin.make_preview_request is patched_make_preview_request

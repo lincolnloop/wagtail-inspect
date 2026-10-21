@@ -1,6 +1,6 @@
 [project]
 name = "wagtail-inspect"
-version = "0.1.1"
+version = "0.2.0"
 description = "Block inspection tools for the Wagtail CMS preview panel"
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -24,7 +24,7 @@ classifiers = [
   "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
 ]
 requires-python = ">=3.12"
-dependencies = ["django>=4.2", "wagtail>=5.0"]
+dependencies = ["django>=4.2", "wagtail>=5.0", "wagtail-block-ids>=0.1.0"]
 
 [project.optional-dependencies]
 testing = [
@@ -45,6 +45,10 @@ Homepage = "https://github.com/lincolnloop/wagtail-inspect"
 Repository = "https://github.com/lincolnloop/wagtail-inspect"
 Changelog = "https://github.com/lincolnloop/wagtail-inspect/blob/main/CHANGELOG.md"
 "Bug Tracker" = "https://github.com/lincolnloop/wagtail-inspect/issues"
+
+# Sibling checkout until wagtail-block-ids is released.
+[tool.uv.sources]
+wagtail-block-ids = { path = "../wagtail-block-ids", editable = true }
 
 [build-system]
 requires = ["uv_build>=0.10.11,<0.11.0"]
@@ -68,6 +72,7 @@ deps =
     wagtail5: wagtail>=5.0,<6.0
     wagtail6: wagtail>=6.0,<7.0
     wagtail7: wagtail>=7.0,<8.0
+    -e {toxinidir}/../wagtail-block-ids
     coverage[toml]>=7.0
     pytest>=8.0
     pytest-django>=4.0

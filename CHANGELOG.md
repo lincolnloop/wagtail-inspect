@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0]
+
+### Changed
+
+- Block marking (the `BoundBlock` / `ListValue` / `Page.serve` patches and the
+  StreamField walk) moved to the new
+  [wagtail-block-ids](https://github.com/lincolnloop/wagtail-block-ids) package, which
+  wagtail-inspect now depends on. wagtail-live-comments uses the same core, so the two
+  packages mark each block once instead of patching the same methods twice. Inspect's
+  behaviour is unchanged: preview and editors' live pages are marked, with
+  `display:contents` wrappers for multi-root or text-only blocks.
+- `blocks_for_field`, `resolve_block_type` and `resolve_block_label` are re-exported
+  from `wagtail_inspect.block_map`.
+
+### Removed
+
+- `wagtail_inspect.preview_active`. Use `wagtail_block_ids.is_marking()`.
+
 ## [0.1.1] - 2026-10-18
 
 ### Fixed
