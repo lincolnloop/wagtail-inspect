@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The inspect highlight follows its block while the page scrolls instead of trailing
+  behind it. The box is positioned with `transform` and snaps to each block (no
+  glide between blocks), and repositioning no longer forces a layout each frame.
+
 ### Changed
 
 - Requires wagtail-block-ids 0.2.0. List children in the block map, and their marks on

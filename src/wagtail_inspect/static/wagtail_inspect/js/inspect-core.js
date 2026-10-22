@@ -30,6 +30,8 @@ class InspectMode {
 
     this._active = false;
     this._overlay = null;
+    this._label = null;
+    this._labelHeight = 0;
     this._liveRegion = null;
     this._highlightedElement = null;
     this._overlayRafId = null;
@@ -196,6 +198,8 @@ class InspectMode {
     // before preview-inspect.css has loaded.
     Object.assign(overlay.style, {
       position: "fixed",
+      top: "0px",
+      left: "0px",
       pointerEvents: "none",
       zIndex: "2147483646",
       display: "none",
@@ -207,11 +211,13 @@ class InspectMode {
 
     this.doc.body.appendChild(overlay);
     this._overlay = overlay;
+    this._label = label;
   }
 
   _removeOverlay() {
     this._overlay?.remove();
     this._overlay = null;
+    this._label = null;
   }
 
   _highlight(element) {
@@ -219,15 +225,14 @@ class InspectMode {
     if (!this._overlay) return;
 
     this._highlightedElement = element;
-    this._positionOverlay(element);
     this._overlay.style.display = "block";
 
     const blockLabel = this._buildBreadcrumbLabel(element);
 
-    const label = this._overlay.querySelector("#wagtail-inspect-label");
-    if (label) {
-      label.textContent = blockLabel;
-    }
+    this._label.textContent = blockLabel;
+    // Measured here, once per label text, so repositioning on scroll never reads layout.
+    this._labelHeight = this._label.offsetHeight || 20;
+    this._positionOverlay(element);
 
     this._announce(blockLabel);
   }
@@ -247,6 +252,7 @@ class InspectMode {
     }
   }
 
+  /** Fit the overlay to *element*. Reads come before writes, so no forced layout. */
   _positionOverlay(element) {
     if (!this._overlay) return;
 
@@ -288,16 +294,15 @@ class InspectMode {
     const width = Math.max(clampRight - clampLeft, minSize);
     const height = Math.max(clampBottom - clampTop, minSize);
 
-    this._overlay.style.top = `${top}px`;
-    this._overlay.style.left = `${left}px`;
+    this._overlay.style.transform = `translate(${left}px, ${top}px)`;
     this._overlay.style.width = `${width}px`;
     this._overlay.style.height = `${height}px`;
 
-    const label = this._overlay.querySelector("#wagtail-inspect-label");
+    const label = this._label;
     if (label) {
       // The label sits above the box; when there is no room above (block at
       // or past the top of the viewport) tuck it inside the top edge instead.
-      const roomAbove = top - (label.offsetHeight || 20) - 8;
+      const roomAbove = top - (this._labelHeight || 20) - 8;
       if (padTop < 0 || roomAbove < 0) {
         label.style.top = "4px";
         label.style.bottom = "auto";

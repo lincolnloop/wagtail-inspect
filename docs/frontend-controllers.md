@@ -147,10 +147,10 @@ mode.activateHighlightedBlock(event);
 
 The overlay is a `<div>` injected into the target document's `<body>`:
 
-- `position: fixed` in the preview iframe's viewport, aligned to `getBoundingClientRect()` (no scroll-offset math)
+- `position: fixed` at `0, 0` in the preview iframe's viewport, moved onto the block with `transform: translate()` from `getBoundingClientRect()` (no scroll-offset math)
 - `pointer-events: none` so mouse events pass through to blocks underneath
 - `z-index: 999999` to sit above all page content
-- `transition: all 0.1s ease-out` for smooth repositioning between blocks
+- No transition: the box snaps to each block on hover, focus, scroll and resize
 - `border: 2px solid var(--wagtail-inspect-color)` using resolved theme color
 - `background: var(--wagtail-inspect-bg)` using semi-transparent theme color via `color-mix()`
 

@@ -15,6 +15,12 @@ function createMode(overrides = {}) {
   });
 }
 
+/** The overlay's ``translate(x, y)`` position as numbers. */
+function overlayPos(overlay) {
+  const match = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(overlay.style.transform);
+  return match ? { left: parseFloat(match[1]), top: parseFloat(match[2]) } : null;
+}
+
 function blockEl(id = "uuid-1", label = "My Block") {
   const el = document.createElement("div");
   el.setAttribute("data-block-id", id);
@@ -326,8 +332,7 @@ describe("InspectMode", () => {
         document.body.appendChild(el);
         mode._positionOverlay(el);
         const overlay = document.getElementById("wagtail-inspect-overlay");
-        expect(overlay.style.left).toBe("7px");
-        expect(overlay.style.top).toBe("17px");
+        expect(overlayPos(overlay)).toEqual({ left: 7, top: 17 });
         el.remove();
       } finally {
         Object.defineProperty(window, "scrollX", { value: prevScrollX, configurable: true });
@@ -354,7 +359,7 @@ describe("InspectMode", () => {
       document.body.appendChild(el);
       mode._positionOverlay(el);
       const overlay = document.getElementById("wagtail-inspect-overlay");
-      const left = parseFloat(overlay.style.left);
+      const { left } = overlayPos(overlay);
       const width = parseFloat(overlay.style.width);
       expect(left).toBeGreaterThanOrEqual(0);
       expect(left + width).toBeLessThanOrEqual(vw);
@@ -378,7 +383,7 @@ describe("InspectMode", () => {
       document.body.appendChild(el);
       mode._positionOverlay(el);
       const overlay = document.getElementById("wagtail-inspect-overlay");
-      const left = parseFloat(overlay.style.left);
+      const { left } = overlayPos(overlay);
       const width = parseFloat(overlay.style.width);
       const vw = window.innerWidth;
       expect(left).toBeGreaterThanOrEqual(0);
@@ -408,6 +413,60 @@ describe("InspectMode", () => {
       expect(label).not.toBeNull();
       expect(label.style.top).toBe("4px");
       expect(label.style.bottom).toBe("auto");
+      el.remove();
+    });
+
+    it("positions with transform, not top/left", () => {
+      mode = createMode();
+      mode.activate();
+      const el = blockEl();
+      el.getBoundingClientRect = () => ({
+        x: 10,
+        y: 20,
+        width: 40,
+        height: 30,
+        top: 20,
+        right: 50,
+        bottom: 50,
+        left: 10,
+      });
+      document.body.appendChild(el);
+      mode._positionOverlay(el);
+      const overlay = document.getElementById("wagtail-inspect-overlay");
+      expect(overlay.style.top).toBe("0px");
+      expect(overlay.style.left).toBe("0px");
+      expect(overlay.style.transform).toBe("translate(7px, 17px)");
+      expect(overlay.style.width).toBe("46px");
+      el.remove();
+    });
+
+    it("never reads the label's layout while repositioning", () => {
+      mode = createMode();
+      mode.activate();
+      const el = blockEl();
+      el.getBoundingClientRect = () => ({
+        x: 10,
+        y: 200,
+        width: 40,
+        height: 30,
+        top: 200,
+        right: 50,
+        bottom: 230,
+        left: 10,
+      });
+      document.body.appendChild(el);
+      mode._highlight(el);
+      const label = document.getElementById("wagtail-inspect-label");
+      let reads = 0;
+      Object.defineProperty(label, "offsetHeight", {
+        configurable: true,
+        get: () => {
+          reads += 1;
+          return 20;
+        },
+      });
+      mode._positionOverlay(el);
+      expect(reads).toBe(0);
       el.remove();
     });
 
