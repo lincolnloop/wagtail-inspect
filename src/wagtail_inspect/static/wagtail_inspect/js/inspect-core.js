@@ -16,6 +16,9 @@ class InspectMode {
   // Host pages may park inert <template data-block-id> markers in the DOM;
   // they have no box and must never become inspect targets.
   static BLOCK_SELECTOR = "[data-block-id]:not(template)";
+  // Other tools' UI on the page (e.g. live-comment pins): never a block, and not
+  // part of the block it sits in. Contract documented in wagtail-block-ids.
+  static IGNORE_SELECTOR = "[data-block-ids-ignore]";
 
   constructor(doc, { onBlockClick, onEscape, stylesheetUrl = "" }) {
     this.doc = doc;
@@ -110,6 +113,7 @@ class InspectMode {
   }
 
   _findBlockElement(element) {
+    if (element.closest(InspectMode.IGNORE_SELECTOR)) return null;
     return element.closest(InspectMode.BLOCK_SELECTOR);
   }
 
@@ -145,6 +149,8 @@ class InspectMode {
     }
 
     if ((event.key === "Enter" || event.key === " ") && this._active) {
+      // Keys on another tool's UI (a focused comment pin) belong to that tool.
+      if (event.target.closest?.(InspectMode.IGNORE_SELECTOR)) return;
       const blockElement = this._findBlockElement(event.target) || this._highlightedElement;
       if (blockElement) {
         event.preventDefault();

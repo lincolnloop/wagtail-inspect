@@ -159,6 +159,36 @@ describe("InspectMode", () => {
       expect(mode._findBlockElement(inner)).toBe(outer);
     });
 
+    it("ignores other tools' UI inside a block, even if it carries an id", () => {
+      mode = createMode();
+      const block = blockEl("block-uuid", "Tile");
+      const pin = blockEl("block-uuid", "Tile");
+      pin.setAttribute("data-block-ids-ignore", "");
+      const button = document.createElement("button");
+      pin.appendChild(button);
+      block.appendChild(pin);
+      document.body.appendChild(block);
+      expect(mode._findBlockElement(pin)).toBeNull();
+      expect(mode._findBlockElement(button)).toBeNull();
+      block.remove();
+    });
+
+    it("leaves Enter on other tools' UI alone", () => {
+      const clicks = [];
+      mode = createMode({ onBlockClick: (id) => clicks.push(id) });
+      const block = blockEl("block-uuid", "Tile");
+      const pin = document.createElement("button");
+      pin.setAttribute("data-block-ids-ignore", "");
+      block.appendChild(pin);
+      document.body.appendChild(block);
+      mode.activate();
+      mode._highlightedElement = block;
+      mode._handleKeyDown({ key: "Enter", target: pin, preventDefault() {}, stopPropagation() {} });
+      expect(clicks).toEqual([]);
+      mode.deactivate();
+      block.remove();
+    });
+
     it("returns null when no ancestor has data-block-id", () => {
       mode = createMode();
       const el = document.createElement("span");
