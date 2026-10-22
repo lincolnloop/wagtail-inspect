@@ -252,7 +252,7 @@ This is a **pure utility module** -- it does nothing on its own when loaded and 
 
 ### Why Augmentation is Needed
 
-The Python rendering patches (`patches.py`) annotate blocks rendered via `{% include_block %}` and `{{ page.body }}`. Some rendering patterns bypass these entry points entirely:
+The server-side rendering patches (in [wagtail-block-ids](https://github.com/lincolnloop/wagtail-block-ids), switched on by inspect's `patches.py`) annotate blocks rendered via `{% include_block %}` and `{{ page.body }}`. Some rendering patterns bypass these entry points entirely:
 
 - `{% for item in value.items %}` without `{% include_block item %}` -- the list item elements are created by the template, not by `BoundBlock.render_as_block`
 - `django-includecontents` `{% includecontents %}` components -- uses a custom rendering path that doesn't call `BoundBlock` methods

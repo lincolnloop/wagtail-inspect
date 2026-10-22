@@ -3,35 +3,45 @@
 **Labels:** `architecture`, `upstream`, `discussion`
 **Priority:** High
 
+> **Note (0.2.0):** block marking moved out of this repo into [wagtail-block-ids](https://github.com/lincolnloop/wagtail-block-ids). The alternatives below were weighed when the patches lived here, and the code sketches use names from that time (`_wrap_if_preview`, `preview_active`) that no longer exist. The "Current approach" and "Current status" sections describe today's code.
+
 ## Description
 
 The entire inspect feature depends on wrapping each rendered block with `data-block-id` and `data-block-label` attributes. Wagtail provides no extension point for this -- no hook, no signal, no template tag argument, no `Block.render()` wrapper mechanism.
 
-The current approach patches four internal Wagtail hooks. This works but creates version coupling to Wagtail internals (see [#001](issues/001-wagtail-version-compatibility.md)).
+The current approach patches Wagtail's block rendering and page serving in wagtail-block-ids, plus one preview lifecycle method in wagtail-inspect. This works but creates version coupling to Wagtail internals (see [#001](issues/001-wagtail-version-compatibility.md)).
 
 This document explores every alternative considered, from zero-patch approaches to hybrid strategies, with their trade-offs.
 
-## Current Approach: four monkey-patches
+## Current Approach: marking in wagtail-block-ids, one preview patch here
 
-Four Wagtail APIs are patched in `patches.py`:
+Block marking is done by [wagtail-block-ids](https://github.com/lincolnloop/wagtail-block-ids), which patches (see `wagtail_block_ids.marks`):
 
-| Patched method                          | Role                                                                 | Stability risk                                    | Wrapping / behaviour                       |
-| --------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------ |
-| `BoundBlock.render`                     | `{{ page.body }}`, `{% include_block page.body %}`                   | Medium (`BoundBlock` is a semi-public base class) | `preview_active` + `getattr(self, "id", None)` |
-| `BoundBlock.render_as_block`            | `{% for block in page.body %}{% include_block block %}`                | Medium                                            | Same                                       |
-| `ListValue.__iter__`                    | `{% for item in value.items %}{% include_block item %}` (preview)    | Medium                                            | Preview-only: yields `_ListChildProxy`     |
-| `PreviewableMixin.make_preview_request` | Preview lifecycle + `_preview_block_maps` snapshot                   | Low (stable lifecycle method)                     | Sets `preview_active` for request scope    |
+| Patched method                          | Role                                                                   | Stability risk                                    | Behaviour                                              |
+| --------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------ |
+| `BoundBlock.render`                     | `{{ page.body }}`, `{% include_block page.body %}`                     | Medium (`BoundBlock` is a semi-public base class) | Marks output while `is_marking()` and the block has `.id` |
+| `BoundBlock.render_as_block`            | `{% for block in page.body %}{% include_block block %}`                | Medium                                            | Same                                                   |
+| `ListValue.__iter__`                    | `{% for item in value.items %}{% include_block item %}`                | Medium                                            | While marking: yields proxies carrying the child's id  |
+| `Page.serve` / `PreviewableMixin.serve_preview` | Page serves                                                    | Low                                               | Marks the serve if a registered page marker says so    |
 
-Wrapping happens when `preview_active.get()` is `True` **and** the bound block carries a `.id` attribute. Only `StreamValue.StreamChild` and `ListValue.ListChild` instances carry a UUID; plain `BoundBlock` instances do not. This mirrors Wagtail's own rule that editor panels (`block-{uuid}-section`) are created only for UUID-bearing bound blocks.
+wagtail-inspect itself patches one method and registers one marker (`patches.py`):
+
+| Hook                                    | Role                                                                                         |
+| --------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `PreviewableMixin.make_preview_request` | Renders the preview inside `marking(wrap=True)`, then `remember_preview` stores the block map per editor in Django's cache |
+| `register_page_marker(mark_live_page, wrap=True)` | Marks live-page serves for users who can edit the page (`WAGTAIL_INSPECT_LIVE_PAGES`) |
+
+Marking happens while a `marking()` scope is open **and** the bound block carries a `.id` attribute. Only `StreamValue.StreamChild` and `ListValue.ListChild` instances carry a UUID; plain `BoundBlock` instances do not. This mirrors Wagtail's own rule that editor panels (`block-{uuid}-section`) are created only for UUID-bearing bound blocks.
 
 **Why it was chosen:**
 
-- Zero template changes, transparent to developers, preview-only.
+- Zero template changes, transparent to developers, limited to previews and editors' live pages.
 - Patching `BoundBlock` (not `IncludeBlockNode`) covers both template rendering paths without requiring two entry-point patches.
 - Automatically covers `ListChild` objects (UUID-bearing `ListBlock` items).
-- The `ContextVar` (`preview_active`) set by the `make_preview_request` patch is async-safe and works even when no template context is available.
+- The `ContextVar`-backed marking scope opened around `make_preview_request` is async-safe and works even when no template context is available.
+- Sharing the patches in wagtail-block-ids means wagtail-inspect and wagtail-live-comments mark each block once instead of patching the same methods twice.
 
-**Coverage:** Covers standard Wagtail paths: stream-level rendering, explicit `{% include_block %}`, and preview-gated list iteration. Custom rendering that never calls `BoundBlock` (e.g. raw loops over `value.items` without `include_block`, or `django-includecontents`) is not tagged by Python; **`inspect-augment.js`** annotates those nodes using the block map from the API. Templates that use plain attribute access to snippet sub-fields (`{{ block.value.body }}`) are still not individually wrapped when they bypass `BoundBlock`.
+**Coverage:** Covers standard Wagtail paths: stream-level rendering, explicit `{% include_block %}`, and list iteration while marking. Custom rendering that never calls `BoundBlock` (e.g. raw loops over `value.items` without `include_block`, or `django-includecontents`) is not marked on the server; **`inspect-augment.js`** annotates those nodes using the block map from the API. Templates that use plain attribute access to snippet sub-fields (`{{ block.value.body }}`) are still not individually marked when they bypass `BoundBlock`.
 
 **Root problems it causes:** [#001](issues/001-wagtail-version-compatibility.md), [#002](issues/002-no-test-suite.md).
 
@@ -102,9 +112,9 @@ The tag would resolve the block, render it via the standard path, then wrap the 
 
 ---
 
-### C. Fewer, More Stable Patches (Implemented)
+### C. Fewer, More Stable Patches (Implemented, now in wagtail-block-ids)
 
-Reduce to patches at the `BoundBlock` level, targeting more stable classes:
+Reduce to patches at the `BoundBlock` level, targeting more stable classes (historical sketch; the patches now live in `wagtail_block_ids.marks`, and inspect's preview patch opens a `marking(wrap=True)` scope instead of setting a ContextVar itself):
 
 ```python
 # Patch BoundBlock.render — covers {{ page.body }} and {% include_block page.body %}
@@ -130,7 +140,7 @@ def patched_make_preview_request(self, ...):
 
 `BoundBlock` is a simpler, more public-facing class than `IncludeBlockNode`. Patching both `render` and `render_as_block` covers both rendering entry points without double-wrapping (the two methods never call each other). `ListValue.__iter__` (preview-only) supports list-block loops with `{% include_block %}`. `PreviewableMixin.make_preview_request` is a lifecycle hook that is more stable than the previous thread-local/middleware approach.
 
-**This is the basis of the current implementation**, extended with the `ListValue` patch and `inspect-augment.js`. See `patches.py`.
+**This is the basis of the current implementation**, extended with the `ListValue` patch and `inspect-augment.js`. The block patches are in wagtail-block-ids (`marks.py`); inspect's `patches.py` keeps only the `make_preview_request` patch and the live-page marker.
 
 ---
 
@@ -264,7 +274,7 @@ Use `TemplateResponse` middleware to post-process the rendered HTML.
 
 | Option                                                     | Patches Wagtail internals | Template changes | Coverage                       | Viability                                      |
 | ---------------------------------------------------------- | ------------------------- | ---------------- | ------------------------------ | ---------------------------------------------- |
-| **Current (4 patches: BoundBlock ×2 + ListValue + preview)** | 4 methods              | None             | Full with JS augment for bypass paths | **Implemented**                          |
+| **Current (wagtail-block-ids patches + inspect preview patch)** | BoundBlock ×2, ListValue, serve ×2, make_preview_request | None | Full with JS augment for bypass paths | **Implemented**                |
 | **A. StreamBlock subclass**                                | None                      | Model change     | Partial                        | Limited use                                    |
 | **B. Custom template tag**                                 | None                      | Every template   | Where used                     | Clean but incomplete                           |
 | **C. BoundBlock + list + lifecycle patches**               | 4 methods                 | None             | Full + augment                 | **Implemented (this is the current approach)**   |
@@ -277,14 +287,19 @@ Use `TemplateResponse` middleware to post-process the rendered HTML.
 
 ## Current Status
 
-The implementation uses four patches:
+Marking is implemented in wagtail-block-ids:
 
 1. `BoundBlock.render` -- stream-level rendering (`{{ page.body }}`, `{% include_block page.body %}`)
 2. `BoundBlock.render_as_block` -- explicit iteration (`{% for block in page.body %}{% include_block block %}`)
-3. `ListValue.__iter__` -- preview-only iteration yielding `_ListChildProxy` for list blocks
-4. `PreviewableMixin.make_preview_request` -- sets `preview_active` for the preview request and snapshots `flat_block_map_for_instance` into `_preview_block_maps`
+3. `ListValue.__iter__` -- iteration while marking yields proxies for list blocks
+4. `Page.serve` / `PreviewableMixin.serve_preview` -- mark serves that a registered page marker accepts
 
-The wrapping guard checks `getattr(self, "id", None)` on the bound block instance, which is truthy only for `StreamChild` and `ListChild` instances. This is derived from Wagtail's own JS-side `BaseSequenceChild` logic and replaces the earlier `isinstance(value, StreamValue.StreamChild)` check.
+wagtail-inspect adds:
+
+1. `PreviewableMixin.make_preview_request` -- renders the preview inside `marking(wrap=True)`, then `remember_preview` stores `flat_block_map_for_instance` in Django's cache per (editor, page)
+2. `mark_live_page`, registered with `register_page_marker(..., wrap=True)` -- marks live pages for users who can edit them
+
+The marking guard checks `getattr(bound, "id", None)`, which is truthy only for `StreamChild` and `ListChild` instances. This is derived from Wagtail's own JS-side `BaseSequenceChild` logic and replaces the earlier `isinstance(value, StreamValue.StreamChild)` check.
 
 **Long-term:** Pursue **Option D** (upstream Wagtail contribution). The current code serves as a proof of concept demonstrating the value of block-level metadata in preview mode.
 
@@ -294,5 +309,6 @@ The wrapping guard checks `getattr(self, "id", None)` on the bound block instanc
 
 - [x] This issue comprehensively documents all alternatives and why each was accepted or rejected
 - [x] Refactored from `IncludeBlockNode.render` (1 patch) to `BoundBlock` (2 patches) + `ListValue.__iter__` + `make_preview_request` for better coverage and stability
+- [x] Moved the block patches to wagtail-block-ids so they are shared with wagtail-live-comments
 - [ ] (Optional) Provide Option B (custom template tag) as an opt-in alternative
 - [ ] (Optional) Open a Wagtail RFC for native block ID support in preview mode

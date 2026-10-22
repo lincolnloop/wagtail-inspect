@@ -10,7 +10,7 @@ Actionable tracking notes for maintenance, hardening, and test gaps. Resolved it
 | Test coverage follow-ups (CI runs on main)        | [002-no-test-suite.md](002-no-test-suite.md)                                 |
 | Feature flag (`WAGTAIL_INSPECT_ENABLED`)          | [003-no-feature-flag.md](003-no-feature-flag.md)                             |
 | Overlay z-index (CSS variable / Wagtail layering) | [007-hardcoded-z-index.md](007-hardcoded-z-index.md)                         |
-| Inline script URL hardening                       | [012-template-script-injection.md](012-template-script-injection.md)         |
+| Inline script URL hardening (likely resolved: no inline script since 0.1.1) | [012-template-script-injection.md](012-template-script-injection.md) |
 
 ## Design reference (not backlog)
 
@@ -27,5 +27,5 @@ These were addressed in code or docs; details stay in git history and in [Implem
 | Resize / scroll overlay thrashing | Coalesced via `requestAnimationFrame` in `inspect-core.js`        |
 | Userbar shadow DOM polling        | Replaced with `MutationObserver` in `userbar-inspect.js`          |
 | Broken doc links / file map       | `README.md` and `docs/index.md` corrected                         |
-| Middleware URL preview detection  | Removed; `ContextVar` via `PreviewableMixin.make_preview_request` |
-| `ListValue` iteration & UUIDs     | `ListValue.__iter__` patch + `_ListChildProxy` in preview         |
+| Middleware URL preview detection  | Removed; marking scope opened in `PreviewableMixin.make_preview_request` (scope now in wagtail-block-ids) |
+| `ListValue` iteration & UUIDs     | `ListValue.__iter__` patch while marking (now in wagtail-block-ids) |

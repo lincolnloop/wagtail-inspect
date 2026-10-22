@@ -12,32 +12,39 @@ run locally via `just test` / `just test-all`.
 **CI:** [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs on pushes and pull requests to `main`: dependency install, `just pre-commit --all-files`, `just lint --no-fix`, Playwright Chromium + `just test-all`, and `uv build`. This issue tracks **remaining coverage gaps** (see checklists below), not absence of automation.
 
 Userbar visibility is enforced in `add_inspect_blocks_item()` (`construct_wagtail_userbar` hook)
-with early returns, not only via `InspectBlocksUserbarItem.is_shown()` — see `test_wagtail_hooks.py`.
+with early returns — see `test_wagtail_hooks.py`.
 
 ---
 
 ## Python test cases (pytest / Django TestCase)
 
-### `patches.py` — wrapping logic
+### `patches.py` — preview patch and live-page marker
 
-- [x] `_wrap_if_preview()` produces correct HTML: `data-block-id`, `data-block-type`, `data-block-label`, and `style="display:contents"`
-- [x] `_wrap_if_preview()` skips blocks with no `.id` attribute (plain `BoundBlock`)
-- [x] `_wrap_if_preview()` does nothing when `preview_active` is `False`
-- [x] `patched_bound_block_render` behaviour — same wrapping rules as `_wrap_if_preview` (covered by `_wrap_if_preview` tests; patch installed: `test_apply_patches_is_idempotent`)
-- [x] Pass-through without block IDs / when preview inactive — `test_wrap_if_preview_skips_*`, `test_wrap_if_preview_skips_when_preview_is_inactive`
-- [ ] `patched_bound_block_render_as_block` — dedicated test calling `BoundBlock.render_as_block` under preview (still optional)
-- [x] `preview_active` ContextVar is `True` inside `patched_make_preview_request` and `False` after (including on exception)
-- [x] `apply_patches()` is idempotent — calling twice does not double-patch
+Marking itself (`data-block-*` output, wrappers, `ListValue` proxies) is tested in wagtail-block-ids. The earlier `_wrap_if_preview` / `preview_active` tests went with it.
+
+- [x] `make_preview_request` renders inside a wrapping marking scope — `test_make_preview_request_renders_inside_a_wrapping_scope`
+- [x] Unknown kwargs are forwarded to the original — `test_patched_make_preview_request_forwards_unknown_kwargs`
+- [x] The editor's preview map is remembered (positional and keyword request) — `test_make_preview_request_remembers_the_editors_preview`
+- [x] No request → nothing remembered — `test_make_preview_request_without_a_request_remembers_nothing`
+- [x] Marking scope closed when the original raises — `test_marking_always_closed_when_original_raises`
+- [x] Live-page marker: editors yes, others no, setting respected — `test_live_page_marker_*`
+- [x] `apply_patches()` registers the marker once and is idempotent — `test_apply_patches_registers_the_wrapping_live_marker_once`, `test_apply_patches_is_idempotent`
+
+### `block_map.py` / `views.py`
+
+- [x] Flat map: stream children, list children, order, empty stream, missing ids — `test_flat_block_map_*`
+- [x] `block_map_for`: page without revision, latest revision, editor's last preview, `live` — `test_block_map_for_*`
+- [x] Preview maps kept per editor; `remember_preview` needs a pk and an authenticated user — `test_previews_are_kept_per_editor`, `test_remember_preview_needs_*`
+- [x] Deprecated walk re-exports warn — `test_walk_reexports_are_deprecated`
+- [x] API: 401 / 403 / 404, editor's last preview, `?source=live` — `tests/backend/test_views.py`
 
 ### `wagtail_hooks.py` — `add_inspect_blocks_item` / `InspectBlocksUserbarItem`
 
-- [x] Item not added when `page` is `None` — `test_add_inspect_blocks_item_skips_when_page_missing_or_no_id`
-- [x] Item not added when `page.id` is falsy — same test
-- [x] Item not added when `request.is_preview` is falsy — `test_add_inspect_blocks_item_skips_when_not_preview`
-- [x] Item not added when `is_preview` attribute missing — `test_add_inspect_blocks_item_skips_when_is_preview_absent`
-- [ ] User lacks `can_edit()` — not asserted in unit tests (Wagtail userbar may filter elsewhere; optional)
-- [x] Item appended on preview with valid page — `test_add_inspect_blocks_item_appends_on_preview_with_page_id`
-- [x] `get_context_data()` includes `inspect_preview_context` (`pageId`, `editUrl`, `apiUrl`) and script URLs — `test_get_context_data_includes_api_and_script_urls`
+- [x] Item added on preview and on live pages for editors — `test_adds_item_on_preview_for_editors`, `test_adds_item_on_live_pages_for_editors`
+- [x] `WAGTAIL_INSPECT_LIVE_PAGES = False` keeps it off live pages only — `test_live_pages_can_be_switched_off`
+- [x] Item skipped for anonymous users, non-editors, the preview panel, unsaved pages, and no page — `test_skips_item` (parametrized), `test_add_inspect_blocks_item_skips_preview_panel`
+- [x] `get_context_data()` includes `inspect_preview_context` (`pageId`, `editUrl`, `apiUrl`, `cssUrl`); live item asks for `?source=live` — `test_get_context_data_includes_api_urls`, `test_live_item_requests_the_live_block_map`
+- [x] Userbar `media` loads scripts in dependency order, no inline script — `test_userbar_item_media_loads_scripts_in_dependency_order`, `test_userbar_item_renders_no_inline_script`
 - [x] `global_admin_js()` includes core/helpers/controller scripts — `test_global_admin_js_emits_wagtail_inspect_config_and_scripts`
 
 ---
@@ -94,6 +101,6 @@ a classic browser script. Run with `bun test tests/frontend` (see [package.json]
 
 ## Acceptance criteria
 
-- [ ] Python test suite covers every checkbox above (see remaining gaps, e.g. `render_as_block` integration)
+- [x] Python test suite covers every Python checkbox above (marking itself is covered in wagtail-block-ids)
 - [x] JavaScript test suite covers all JS cases listed under `InspectMode`
 - [x] Tests run in CI on every push / PR to `main` (see `ci.yml`)

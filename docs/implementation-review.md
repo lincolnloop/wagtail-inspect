@@ -2,6 +2,8 @@
 
 A candid review of the codebase, covering code quality observations, resolved items, and remaining concerns. For the open backlog, see [issues/README.md](issues/README.md).
 
+> **Note (0.2.0):** this review predates the move of block marking to [wagtail-block-ids](https://github.com/lincolnloop/wagtail-block-ids). The `BoundBlock` / `ListValue` patches, the wrapping logic (`_wrap_if_preview`, `_inject_attrs_into_root`) and the `preview_active` ContextVar named in the resolved items below no longer exist in this repo; their successors live in `wagtail_block_ids.marks` (`marking()`, `is_marking()`). wagtail-inspect now patches only `PreviewableMixin.make_preview_request` and registers a live-page marker. The resolved-items table is kept as history; the sections after it describe the current code.
+
 ## Table of Contents
 
 - [Resolved items](#resolved-items)
@@ -55,39 +57,41 @@ Wagtail's block rendering pipeline has no extension point for injecting attribut
 
 ### 2. Patching `BoundBlock` instead of `IncludeBlockNode`
 
+*(These patches now live in wagtail-block-ids; the reasoning still applies there.)*
+
 `BoundBlock` is the common base class of `StreamValue.StreamChild` and `ListValue.ListChild`. Patching at this level covers both rendering entry points (`render` for `{{ page.body }}` / `{% include_block page.body %}`, and `render_as_block` for explicit `{% include_block block %}` iteration) and automatically handles `ListChild` objects with UUIDs.
 
 The `.id` guard (`getattr(self, "id", None)`) ensures that plain `BoundBlock` instances with no UUID are never wrapped -- this replaces the earlier `isinstance(value, StreamValue.StreamChild)` check in the `IncludeBlockNode` patch.
 
 ### 3. `ContextVar` instead of thread-local state
 
-`preview_active` is a `ContextVar[bool]` rather than `threading.local`. This is async-safe (works with both WSGI and ASGI), is automatically scoped per execution context, and does not require passing a `context` argument to the wrapping logic.
+The marking scope is a `ContextVar` (inside wagtail-block-ids, opened with `wagtail_block_ids.marking()`) rather than `threading.local`. This is async-safe (works with both WSGI and ASGI), is automatically scoped per execution context, and does not require passing a `context` argument to the marking logic.
 
-The ContextVar is set by patching `PreviewableMixin.make_preview_request` — an entry point that wraps the full preview work so nested renders see `preview_active.get() == True`.
+Inspect opens the scope by patching `PreviewableMixin.make_preview_request` — an entry point that wraps the full preview work so nested renders see `is_marking() == True` — and, for editors' live pages, through a page marker registered with `register_page_marker`.
 
 ### 4. No middleware required
 
-`middleware.py` was deleted. Preview detection is handled entirely by the `patched_make_preview_request` patch, which sets `preview_active` for the scope of Wagtail’s preview request (including template rendering). No `MIDDLEWARE` entry is required.
+`middleware.py` was deleted. Preview marking is handled by the `patched_make_preview_request` patch, which renders Wagtail’s preview request inside `marking(wrap=True)`; live pages are handled by the page marker. No `MIDDLEWARE` entry is required.
 
 ### 5. Python-first wrapping plus client-side augmentation
 
-`BoundBlock.render`, `BoundBlock.render_as_block`, and `ListValue.__iter__` cover the normal Wagtail rendering paths (`{{ … }}`, `{% include_block %}`, and preview-gated list iteration). Templates that bypass those paths — for example raw `{% for item in value.items %}` without `include_block`, or libraries like `django-includecontents` — never hit the patches. **`inspect-augment.js`** closes that gap: controllers fetch the authoritative block map from the API and call `augmentPreviewBlocks()` in the preview document so those DOM nodes still get `data-block-*` attributes.
+wagtail-block-ids' `BoundBlock.render`, `BoundBlock.render_as_block`, and `ListValue.__iter__` patches cover the normal Wagtail rendering paths (`{{ … }}`, `{% include_block %}`, and list iteration while marking). Templates that bypass those paths — for example raw `{% for item in value.items %}` without `include_block`, or libraries like `django-includecontents` — never hit the patches. **`inspect-augment.js`** closes that gap: controllers fetch the block map from the API and call `augmentPreviewBlocks()` in the page document so those DOM nodes still get `data-block-*` attributes.
 
 ### 6. Attribute injection with `display:contents` fallback
 
-`_inject_attrs_into_root` injects `data-block-*` attributes directly onto the block's own root element, emitting no wrapper. This preserves all CSS layouts including Grid and Flexbox without any side-effects.
+wagtail-block-ids injects `data-block-*` attributes directly onto the block's own root element, emitting no wrapper. This preserves all CSS layouts including Grid and Flexbox without any side-effects.
 
-**Fallback:** when a block renders plain text with no HTML element (rare — typically only bare `CharBlock`s), a `<div style="display:contents">` wrapper is used instead. The wrapper exists in the DOM but generates no layout box, remaining queryable via `[data-block-id]`.
+**Fallback:** inspect opens its scopes with `wrap=True`, so when a block renders plain text with no HTML element (typically bare `CharBlock`s) or several root elements (e.g. markdown), a `<div style="display:contents">` wrapper is used instead. The wrapper exists in the DOM but generates no layout box, remaining queryable via `[data-block-id]`.
 
 **Rect computation:** `_getBlockRect()` uses `getBoundingClientRect()` on the block root; for zero-sized rects (e.g. `display:contents` wrappers), it unions **direct child** element rects first and uses the Range API only as a last resort for text-only wrappers with no element children.
 
-### 7. Dynamic script loading in the userbar template
+### 7. Userbar assets through `media`
 
-Wagtail clones userbar content from a `<template>` element into Shadow DOM. Cloned `<script src>` tags don't execute, but inline scripts do. The inline script bootstrapper dynamically creates `<link>` / `<script>` elements to load `preview-inspect.css`, `inspect-core.js`, `inspect-augment.js`, and `userbar-inspect.js` in order (see `item_inspect_preview.html`).
+The userbar item used to load its scripts with an inline bootstrapper, which a strict `script-src` CSP blocks. `InspectBlocksUserbarItem.media` now declares `preview-inspect.css` and `inspect-core.js` → `inspect-augment.js` → `userbar-inspect.js`; Wagtail puts the CSS in the userbar shadow root and emits the scripts as external `<script src>` tags after `<wagtail-userbar>`. `item_inspect_preview.html` has no inline script.
 
 ### 8. Two controllers instead of one
 
-The CMS preview panel (iframe) and standalone preview page (no iframe) have fundamentally different requirements: cross-frame communication, iframe reload handling, in-page vs. redirect navigation, Stimulus vs. plain JS. A single controller would need to handle all these cases, increasing complexity. Two focused controllers with a shared core (`InspectMode`) is cleaner.
+The CMS preview panel (iframe) and standalone preview / live page (no iframe) have fundamentally different requirements: cross-frame communication, iframe reload handling, in-page vs. redirect navigation, Stimulus vs. plain JS. A single controller would need to handle all these cases, increasing complexity. Two focused controllers with a shared core (`InspectMode`) is cleaner.
 
 ### 9. `MutationObserver` for auto-attachment
 
@@ -114,7 +118,7 @@ Since Wagtail's admin itself requires modern browsers, these requirements are ac
 
 Three test suites are in place:
 
-- **Backend unit tests** (`tests/backend/`) — patch behaviour, idempotency, ContextVar reset, ListValue iteration, wagtail hooks
+- **Backend unit tests** (`tests/backend/`) — preview patch (wrapping scope, scope closed on error, `remember_preview`), live-page marker, idempotency, block map and per-editor preview cache, API view, wagtail hooks (block marking itself is tested in wagtail-block-ids)
 - **Frontend unit tests** (`tests/frontend/`) — `InspectMode` class via Bun + happy-dom: activation, deactivation, accessibility, event handling, overlay, breadcrumbs
 - **E2E tests** (`tests/e2e/`) — Playwright tests for editor preview, standalone preview, and rich block scenarios
 
@@ -126,16 +130,17 @@ Remaining gaps: no unit tests for `preview-inspect-controller.js` (Stimulus life
 
 ### Strengths
 
-1. **Clear separation of concerns** -- Python patches handle data tagging, the API handles structure, JS controllers handle UI, shared core handles interaction
-2. **Preview-only wrapping** -- Blocks are only wrapped during preview; public pages are unaffected
-3. **Defense-in-depth escaping** -- `format_html()` auto-escapes all interpolated values (`block_id`, `block_type`, `block_label`) even though they come from trusted sources
-4. **Graceful cleanup** -- ContextVar reset in `finally` block, `deactivate()` safe to call multiple times, listeners removed on disconnect
+1. **Clear separation of concerns** -- wagtail-block-ids marks blocks, inspect decides when, the API handles structure, JS controllers handle UI, shared core handles interaction
+2. **Scoped marking** -- Blocks are only marked in previews and in live pages served to users who can edit them; anonymous and non-editor responses are unaffected
+3. **Defense-in-depth escaping** -- wagtail-block-ids writes the attributes with `format_html()`, which auto-escapes the id, type, and label even though they come from trusted sources
+4. **Graceful cleanup** -- the `marking()` scope closes even when the preview render raises, `deactivate()` safe to call multiple times, listeners removed on disconnect
 5. **Accessibility** -- ARIA live region, keyboard Tab navigation, focus-visible outlines, screen reader announcements
 6. **Theme awareness** -- Colors resolved from Wagtail's CSS variables, works with light/dark/auto themes
 7. **Iframe reload resilience** -- Inspect mode survives live preview refreshes via MutationObserver + state flag in `PreviewInspectController`
-8. **Resilient patching** -- `apply_patches()` guard prevents double-application, wraps each patch in `try/except`, warns on untested Wagtail versions
-9. **Principled wrapping rule** -- Only blocks carrying a `.id` (UUID) are wrapped, mirroring Wagtail's own logic that editor panels are only created for UUID-bearing blocks
-10. **Async-safe preview detection** -- `ContextVar` works with both WSGI and ASGI; no thread-local leakage between concurrent requests
+8. **Resilient patching** -- `apply_patches()` guard prevents double-application and wraps the patch in `try/except`; wagtail-block-ids warns on untested Wagtail versions
+9. **Principled marking rule** -- Only blocks carrying a `.id` (UUID) are marked, mirroring Wagtail's own logic that editor panels are only created for UUID-bearing blocks
+10. **Async-safe marking scope** -- `ContextVar` works with both WSGI and ASGI; no thread-local leakage between concurrent requests
+11. **Per-editor preview maps** -- the last preview's block map is kept in Django's cache per (user, page), so editors never see each other's unsaved maps and a shared cache backend serves every worker
 
 ### Areas for Improvement
 
@@ -147,6 +152,6 @@ Open backlog: [issues/README.md](issues/README.md).
 | Test suite gaps & CI          | [#002](issues/002-no-test-suite.md)                 | GitHub Actions runs lint + `just test-all` on push/PR; issue tracks residual gaps |
 | Feature flag                  | [#003](issues/003-no-feature-flag.md)               | Opt-out setting not implemented                             |
 | Hardcoded z-index             | [#007](issues/007-hardcoded-z-index.md)             | Stacking in CSS; optional token / Wagtail layering check    |
-| Template script injection     | [#012](issues/012-template-script-injection.md)     | Harden inline bootstrap URLs                                |
+| Template script injection     | [#012](issues/012-template-script-injection.md)     | Inline bootstrap removed (userbar `media`); likely closable |
 
 **Design reference:** [Monkey-patching alternatives](monkey-patching-alternatives.md) (upstream RFC / template-tag options).

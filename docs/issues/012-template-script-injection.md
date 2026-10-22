@@ -2,6 +2,7 @@
 
 **Labels:** `security`, `hardening`
 **Priority:** Low
+**Status:** **Likely resolved (0.1.1)** — `item_inspect_preview.html` no longer has an inline loader script. Assets load through `InspectBlocksUserbarItem.media` (external `<script src>` tags, CSP-safe), and configuration is passed with `json_script`. The description below is historical.
 
 ## Description
 
