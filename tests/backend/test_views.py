@@ -4,17 +4,17 @@
 - Authenticated user without edit permission → 403
 - Nonexistent page → 404
 - Authenticated editor → 200 + {"blocks": {...}}
-- Response JSON contains block UUIDs from the page's StreamFields
-- Cached _preview_block_maps entry is returned without calling flat_block_map_for_instance
+- Response JSON is the block map for the editor (their last preview, or ?source=live)
 """
 
 import json
 
 import pytest
+from django.core.cache import cache
 from django.test import RequestFactory
-from wagtail.models import Page
+from testapp.models import TestPage
 
-import wagtail_inspect
+from wagtail_inspect.block_map import remember_preview
 from wagtail_inspect.views import PageInspectView
 
 # ---------------------------------------------------------------------------
@@ -49,6 +49,13 @@ class _Permissions:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _clear_cache():
+    cache.clear()
+    yield
+    cache.clear()
+
+
 @pytest.fixture
 def rf():
     return RequestFactory()
@@ -69,32 +76,6 @@ def make_test_page(root_page):
         return page
 
     return _make
-
-
-@pytest.fixture
-def monkeypatch_inspect_editor(monkeypatch):
-    """Allow PageInspectView success-path tests to patch edit permission and the
-    block-map builder in one call.
-    """
-
-    def _apply(*, flat_map_result=None, flat_map_fn=None):
-        monkeypatch.setattr(
-            Page,
-            "permissions_for_user",
-            lambda self, user: _Permissions(can_edit=True),
-        )
-        if flat_map_fn is not None:
-            monkeypatch.setattr(
-                "wagtail_inspect.views.flat_block_map_for_instance",
-                flat_map_fn,
-            )
-        elif flat_map_result is not None:
-            monkeypatch.setattr(
-                "wagtail_inspect.views.flat_block_map_for_instance",
-                lambda p: flat_map_result,
-            )
-
-    return _apply
 
 
 # ---------------------------------------------------------------------------
@@ -137,132 +118,50 @@ def test_nonexistent_page_gets_404(rf):
 
 
 # ---------------------------------------------------------------------------
-# Success path
+# Success path (which map is served is covered in test_block_map.py)
 # ---------------------------------------------------------------------------
 
 
-def test_editor_gets_200_with_blocks(rf, make_test_page, monkeypatch_inspect_editor):
-    page = make_test_page()
-    # Stub flat_block_map_for_instance so this test doesn't depend on
-    # StreamField traversal logic (covered by test_block_map.py).
-    monkeypatch_inspect_editor(
-        flat_map_result={"fake-uuid": {"type": "hero", "label": "Hero", "children": []}},
-    )
+@pytest.fixture
+def superuser(django_user_model):
+    return django_user_model.objects.create_superuser(username="admin", password="x")
 
-    request = rf.get(f"/wagtail-inspect/api/page/{page.pk}/")
-    request.user = _AuthUser()
-    response = PageInspectView.as_view()(request, page_id=page.pk)
+
+def _get(rf, page, user, query=""):
+    request = rf.get(f"/wagtail-inspect/api/page/{page.pk}/{query}")
+    request.user = user
+    return PageInspectView.as_view()(request, page_id=page.pk)
+
+
+def _text_body(block_id):
+    return json.dumps([{"type": "text", "id": block_id, "value": "x"}])
+
+
+def _page_with_text(make_test_page, block_id):
+    page = make_test_page()
+    page.body = _text_body(block_id)
+    page.save()
+    return page
+
+
+def test_editor_gets_200_with_blocks(rf, make_test_page, superuser):
+    page = _page_with_text(make_test_page, "hero")
+
+    response = _get(rf, page, superuser)
 
     assert response.status_code == 200
-    data = json.loads(response.content)
-    assert "blocks" in data
-    assert "fake-uuid" in data["blocks"]
-    assert data["blocks"]["fake-uuid"]["type"] == "hero"
+    assert json.loads(response.content) == {"blocks": {"hero": {"type": "text", "label": "Text", "children": []}}}
 
 
-def test_editor_gets_cached_block_map_when_preview_map_exists(
-    rf, make_test_page, monkeypatch_inspect_editor, monkeypatch
-):
-    """When _preview_block_maps[page_id] is populated (after a preview render),
-    PageInspectView returns it and does not call flat_block_map_for_instance.
-    """
-    page = make_test_page()
-    cached = {"cached-uuid": {"type": "text", "label": "Text", "children": []}}
-    wagtail_inspect._preview_block_maps[page.pk] = cached
+def test_editor_gets_their_last_preview(rf, make_test_page, superuser):
+    page = _page_with_text(make_test_page, "saved")
+    remember_preview(TestPage(pk=page.pk, body=_text_body("unsaved")), superuser)
 
-    called = []
-    monkeypatch_inspect_editor(
-        flat_map_fn=lambda p: called.append(p) or {},
-    )
-
-    try:
-        request = rf.get(f"/wagtail-inspect/api/page/{page.pk}/")
-        request.user = _AuthUser()
-        response = PageInspectView.as_view()(request, page_id=page.pk)
-        assert response.status_code == 200
-        data = json.loads(response.content)
-        assert data["blocks"] == cached
-        assert called == []
-    finally:
-        wagtail_inspect._preview_block_maps.pop(page.pk, None)
+    assert list(json.loads(_get(rf, page, superuser).content)["blocks"]) == ["unsaved"]
 
 
-def test_editor_uses_revision_as_object_when_present(rf, make_test_page, monkeypatch_inspect_editor, monkeypatch):
-    page = make_test_page()
-    sentinel = object()
+def test_live_source_serves_the_published_page(rf, make_test_page, superuser):
+    page = _page_with_text(make_test_page, "live")
+    remember_preview(TestPage(pk=page.pk, body=_text_body("unsaved")), superuser)
 
-    class _Rev:
-        def as_object(self):
-            return sentinel
-
-    monkeypatch.setattr(Page, "get_latest_revision", lambda self: _Rev())
-
-    called_with = []
-    monkeypatch_inspect_editor(
-        flat_map_fn=lambda p: called_with.append(p) or {},
-    )
-
-    request = rf.get(f"/wagtail-inspect/api/page/{page.pk}/")
-    request.user = _AuthUser()
-    response = PageInspectView.as_view()(request, page_id=page.pk)
-    assert response.status_code == 200
-    assert called_with == [sentinel]
-
-
-def test_editor_uses_live_page_when_no_revision(rf, make_test_page, monkeypatch_inspect_editor, monkeypatch):
-    page = make_test_page()
-
-    monkeypatch.setattr(Page, "get_latest_revision", lambda self: None)
-
-    called_with = []
-    monkeypatch_inspect_editor(
-        flat_map_fn=lambda p: called_with.append(p) or {},
-    )
-
-    request = rf.get(f"/wagtail-inspect/api/page/{page.pk}/")
-    request.user = _AuthUser()
-    response = PageInspectView.as_view()(request, page_id=page.pk)
-    assert response.status_code == 200
-    assert len(called_with) == 1
-    assert called_with[0].pk == page.pk
-
-
-def test_editor_response_blocks_include_children_arrays(rf, make_test_page, monkeypatch_inspect_editor):
-    page = make_test_page()
-    stub = {
-        "a": {"type": "hero", "label": "Hero", "children": ["b"]},
-        "b": {"type": "text", "label": "Text", "children": []},
-    }
-
-    monkeypatch_inspect_editor(flat_map_result=stub)
-
-    request = rf.get(f"/wagtail-inspect/api/page/{page.pk}/")
-    request.user = _AuthUser()
-    response = PageInspectView.as_view()(request, page_id=page.pk)
-    data = json.loads(response.content)
-    assert data["blocks"]["a"]["children"] == ["b"]
-    assert data["blocks"]["b"]["children"] == []
-
-
-def test_live_source_uses_the_published_page_not_the_draft(rf, make_test_page, monkeypatch_inspect_editor, monkeypatch):
-    page = make_test_page()
-    wagtail_inspect._preview_block_maps[page.pk] = {"draft": {}}
-
-    class _Rev:
-        def as_object(self):
-            raise AssertionError("live map must not read the latest revision")
-
-    monkeypatch.setattr(Page, "get_latest_revision", lambda self: _Rev())
-    called_with = []
-    monkeypatch_inspect_editor(flat_map_fn=lambda p: called_with.append(p) or {"live": {}})
-
-    try:
-        request = rf.get(f"/wagtail-inspect/api/page/{page.pk}/?source=live")
-        request.user = _AuthUser()
-        response = PageInspectView.as_view()(request, page_id=page.pk)
-    finally:
-        wagtail_inspect._preview_block_maps.pop(page.pk, None)
-
-    assert response.status_code == 200
-    assert json.loads(response.content)["blocks"] == {"live": {}}
-    assert [p.pk for p in called_with] == [page.pk]
+    assert list(json.loads(_get(rf, page, superuser, "?source=live").content)["blocks"]) == ["live"]

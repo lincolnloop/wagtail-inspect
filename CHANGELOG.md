@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the page, are named from their list (a `tags` list's items are "Tag", not "Item").
 - `flat_block_map_for_instance` reads the page's StreamFields through
   wagtail-block-ids' `stream_values`.
+- The preview block map is kept per editor in Django's cache instead of a
+  process-local dict, so one editor's unsaved preview no longer leaks into another's
+  inspector, and every worker sees it when the cache backend is shared. Entries
+  expire after a day.
+- New `wagtail_inspect.block_map.block_map_for(page, user, *, live=False)` and
+  `remember_preview(obj, user)` own the choice of map; `PageInspectView` delegates
+  to them.
+
+### Deprecated
+
+- `wagtail_inspect.block_map.blocks_for_field`, `resolve_block_type` and
+  `resolve_block_label`. Import them from `wagtail_block_ids`.
+
+### Removed
+
+- `wagtail_inspect._preview_block_maps`.
 
 ## [0.2.0]
 

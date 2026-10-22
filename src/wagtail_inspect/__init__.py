@@ -2,9 +2,6 @@
 
 __version__ = "0.2.0"
 
-# Latest preview-render map per page pk (filled in patched_make_preview_request).
-_preview_block_maps: dict[int, dict] = {}
-
 
 def inspect_live_pages_enabled() -> bool:
     """``WAGTAIL_INSPECT_LIVE_PAGES`` (default ``True``): inspect on live pages too."""

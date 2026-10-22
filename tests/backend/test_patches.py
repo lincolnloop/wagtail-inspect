@@ -6,13 +6,16 @@
 - apply_patches() is idempotent and registers the live-page marker once
 """
 
+import json
 from types import SimpleNamespace
 
 import pytest
+from django.core.cache import cache
 from wagtail_block_ids import is_marking
 from wagtail_block_ids import marks as block_ids_marks
 
 import wagtail_inspect.patches as patches_module
+from wagtail_inspect.block_map import block_map_for
 from wagtail_inspect.patches import apply_patches, mark_live_page, patched_make_preview_request
 
 
@@ -61,53 +64,42 @@ def test_patched_make_preview_request_forwards_unknown_kwargs():
         patches_module._originals[key] = saved
 
 
-def test_make_preview_request_snapshots_block_map_into_preview_maps(monkeypatch):
-    """After make_preview_request returns, _preview_block_maps[pk] holds the
-    flat map from flat_block_map_for_instance(self).
-    """
-    import wagtail_inspect
-
+@pytest.fixture
+def preview_original():
+    """Swap in a no-op original ``make_preview_request`` for the test."""
     key = "PreviewableMixin.make_preview_request"
     saved = patches_module._originals[key]
-    fake_map = {"snap-uuid": {"type": "hero", "label": "Hero", "children": []}}
-
-    class FakePage:
-        pk = 4242
-
-    monkeypatch.setattr(
-        "wagtail_inspect.block_map.flat_block_map_for_instance",
-        lambda page: fake_map,
-    )
     patches_module._originals[key] = lambda self, *a, **kw: "ok-response"
-    try:
-        out = patched_make_preview_request(FakePage())
-        assert out == "ok-response"
-        assert wagtail_inspect._preview_block_maps[4242] is fake_map
-    finally:
-        patches_module._originals[key] = saved
-        wagtail_inspect._preview_block_maps.pop(4242, None)
+    yield
+    patches_module._originals[key] = saved
+    cache.clear()
 
 
-def test_make_preview_request_skips_snapshot_when_no_pk(monkeypatch):
-    """Objects without .pk must not write to _preview_block_maps."""
-    import wagtail_inspect
+@pytest.mark.django_db
+@pytest.mark.parametrize("by_keyword", [False, True])
+def test_make_preview_request_remembers_the_editors_preview(preview_original, root_page, django_user_model, by_keyword):
+    """The preview map is kept for the editor in ``original_request``, however it is passed."""
+    from testapp.models import TestPage
 
-    key = "PreviewableMixin.make_preview_request"
-    saved = patches_module._originals[key]
-    called = []
+    page = root_page.add_child(instance=TestPage(title="Saved", slug="saved"))
+    editor = django_user_model.objects.create_user(username="editor")
+    request = SimpleNamespace(user=editor)
+    preview = TestPage(pk=page.pk, body=json.dumps([{"type": "text", "id": "unsaved", "value": "x"}]))
 
-    monkeypatch.setattr(
-        "wagtail_inspect.block_map.flat_block_map_for_instance",
-        lambda page: called.append(page) or {},
-    )
-    patches_module._originals[key] = lambda self, *a, **kw: None
-    try:
-        before = dict(wagtail_inspect._preview_block_maps)
-        patched_make_preview_request(object())
-        assert called == []
-        assert dict(wagtail_inspect._preview_block_maps) == before
-    finally:
-        patches_module._originals[key] = saved
+    args, kwargs = ((), {"original_request": request}) if by_keyword else ((request,), {})
+    assert patched_make_preview_request(preview, *args, **kwargs) == "ok-response"
+
+    assert list(block_map_for(page, editor)) == ["unsaved"]
+
+
+def test_make_preview_request_without_a_request_remembers_nothing(preview_original, monkeypatch):
+    """Previews rendered outside an editor's request (no user) are not kept."""
+    calls = []
+    monkeypatch.setattr(patches_module, "remember_preview", lambda obj, user: calls.append(user))
+
+    patched_make_preview_request(SimpleNamespace(pk=1))
+
+    assert calls == [None]
 
 
 def test_marking_always_closed_when_original_raises():

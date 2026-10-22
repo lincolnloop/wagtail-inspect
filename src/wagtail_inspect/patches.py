@@ -4,8 +4,8 @@ Applied from ``AppConfig.ready()``:
 
 - ``PreviewableMixin.make_preview_request``: render inside a wrapping
   ``wagtail_block_ids.marking`` scope (so multi-root and text-only blocks get a
-  ``display:contents`` wrapper the overlay can measure), then store
-  ``flat_block_map_for_instance`` for the page API.
+  ``display:contents`` wrapper the overlay can measure), then
+  ``remember_preview`` the block map for the editor's page API calls.
 - A page marker for live pages: users who can edit the page get marked blocks too
   (``WAGTAIL_INSPECT_LIVE_PAGES``), also wrapped. Anonymous and non-editor responses
   are untouched.
@@ -23,6 +23,7 @@ except ImportError:
     from wagtail.models import PreviewableMixin
 
 from . import inspect_live_pages_enabled, user_can_inspect
+from .block_map import remember_preview
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +32,10 @@ _live_marker_registered = False
 
 
 def patched_make_preview_request(self, *args, **kwargs):
-    from . import _preview_block_maps
-    from .block_map import flat_block_map_for_instance
-
     with marking(wrap=True):
         response = _originals["PreviewableMixin.make_preview_request"](self, *args, **kwargs)
-    page_pk = getattr(self, "pk", None)
-    if page_pk:
-        _preview_block_maps[page_pk] = flat_block_map_for_instance(self)
+    original_request = kwargs.get("original_request", args[0] if args else None)
+    remember_preview(self, getattr(original_request, "user", None))
     return response
 
 

@@ -58,8 +58,8 @@ def test_inspect_api_uuids_are_subset_of_preview_dom(editor, make_test_page, liv
     """Block UUIDs returned by the inspect JSON API must appear as data-block-id
     values in the preview iframe (same session as the authenticated editor).
 
-    Subset holds when the API serves the preview-aligned block map (e.g. from
-    ``_preview_block_maps`` after a preview render) so every API key exists in
+    Subset holds when the API serves the preview-aligned block map (the editor's
+    ``remember_preview`` map after a preview render) so every API key exists in
     the live iframe DOM; the iframe may still contain extra nodes in edge cases.
     """
     page = make_test_page()
