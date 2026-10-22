@@ -1202,7 +1202,7 @@ wheels = [
 [[package]]
 name = "wagtail-block-ids"
 version = "0.2.0"
-source = { git = "https://github.com/lincolnloop/wagtail-block-ids?rev=9c78df137ff0fd8f69baad972889c127d896c4a2#9c78df137ff0fd8f69baad972889c127d896c4a2" }
+source = { git = "https://github.com/lincolnloop/wagtail-block-ids?tag=v0.2.0#9c78df137ff0fd8f69baad972889c127d896c4a2" }
 dependencies = [
     { name = "django" },
     { name = "wagtail" },
@@ -1245,8 +1245,8 @@ requires-dist = [
     { name = "pytest-xdist", marker = "extra == 'testing'", specifier = ">=3.0" },
     { name = "ruff", marker = "extra == 'testing'", specifier = ">=0.15.6" },
     { name = "setuptools", marker = "extra == 'testing'", specifier = ">=82.0.1" },
-    { name = "wagtail", specifier = ">=5.0" },
-    { name = "wagtail-block-ids", git = "https://github.com/lincolnloop/wagtail-block-ids?rev=9c78df137ff0fd8f69baad972889c127d896c4a2" },
+    { name = "wagtail", specifier = ">=5.0,<8" },
+    { name = "wagtail-block-ids", git = "https://github.com/lincolnloop/wagtail-block-ids?tag=v0.2.0" },
 ]
 provides-extras = ["testing"]
 

@@ -19,13 +19,28 @@ To use **wagtail-inspect** in your own Wagtail project (not the demo `testprojec
 **Published package** — When the project is on PyPI, use **[Installation](#installation)** (`pip install wagtail-inspect`).
 -->
 
-**Wheel from a GitHub Release** — Each [release](https://github.com/lincolnloop/wagtail-inspect/releases) includes build assets: download **`wagtail_inspect-<version>-py3-none-any.whl`** (or the `.tar.gz` sdist). From your site’s activated virtualenv:
+**From a GitHub tag** — wagtail-inspect and its dependency [wagtail-block-ids](https://github.com/lincolnloop/wagtail-block-ids) aren't on PyPI yet, so install both from their release tags. List wagtail-block-ids too, or pip will look for it on PyPI and fail:
 
 ```bash
-pip install /path/to/wagtail_inspect-0.1.0-py3-none-any.whl
+pip install \
+  "wagtail-block-ids @ git+https://github.com/lincolnloop/wagtail-block-ids@v0.2.0" \
+  "wagtail-inspect @ git+https://github.com/lincolnloop/wagtail-inspect@v0.2.0"
 ```
 
-With [uv](https://docs.astral.sh/uv/): `uv pip install /path/to/wagtail_inspect-0.1.0-py3-none-any.whl`.
+The same two lines work in a `requirements.txt`. In a [uv](https://docs.astral.sh/uv/) project:
+
+```bash
+uv add git+https://github.com/lincolnloop/wagtail-block-ids --tag v0.2.0
+uv add git+https://github.com/lincolnloop/wagtail-inspect --tag v0.2.0
+```
+
+**Wheel from a GitHub Release** — Each [release](https://github.com/lincolnloop/wagtail-inspect/releases) includes build assets: download **`wagtail_inspect-<version>-py3-none-any.whl`** (or the `.tar.gz` sdist), and install it with wagtail-block-ids from its tag as above:
+
+```bash
+pip install \
+  "wagtail-block-ids @ git+https://github.com/lincolnloop/wagtail-block-ids@v0.2.0" \
+  /path/to/wagtail_inspect-0.2.0-py3-none-any.whl
+```
 
 **Wheel from CI** — Successful runs of the **CI** workflow upload a **`dist`** artifact containing the same wheel and sdist; download it from the run’s **Summary** tab if you need a build that is not yet tagged.
 

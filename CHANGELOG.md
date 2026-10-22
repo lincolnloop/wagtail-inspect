@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   core, so the two packages mark each block once instead of patching the same methods
   twice. Preview and editors' live pages are still marked, with `display:contents`
   wrappers for multi-root or text-only blocks.
+- Requires Wagtail below 8 (`wagtail>=5.0,<8`); Wagtail 8 is not tested yet.
 - List children in the block map, and their marks on the page, are named from their
   list (a `tags` list's items are "Tag", not "Item").
 - The preview block map is kept per editor in Django's cache instead of a
