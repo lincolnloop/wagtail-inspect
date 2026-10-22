@@ -72,4 +72,47 @@ describe("UserbarInspectController", () => {
       globalThis.WagtailInspectAugment = prevAugment;
     }
   });
+
+  it("is exclusive with other block modes such as live comments", () => {
+    const C = UserbarInspectController();
+    const prevMode = globalThis.WagtailInspectMode;
+    globalThis.WagtailInspectMode = class {
+      constructor() {
+        this.active = false;
+      }
+      activate() {
+        this.active = true;
+      }
+      deactivate() {
+        this.active = false;
+      }
+    };
+    const announced = [];
+    const listen = (event) => announced.push(event.detail.source);
+    document.addEventListener("wagtail-block-ids:mode-on", listen);
+
+    try {
+      const host = document.createElement("div");
+      const ctrl = new C(host, host.attachShadow({ mode: "open" }));
+      ctrl.connect();
+
+      ctrl.activate();
+      expect(announced).toEqual(["wagtail-inspect"]);
+      expect(ctrl.inspectMode.active).toBe(true);
+
+      const other = (source) =>
+        document.dispatchEvent(
+          new CustomEvent("wagtail-block-ids:mode-on", { detail: { source } }),
+        );
+      other("wagtail-inspect");
+      expect(ctrl.inspectMode.active).toBe(true);
+      other("wagtail-live-comments");
+      expect(ctrl.inspectMode).toBeNull();
+
+      ctrl.disconnect();
+    } finally {
+      document.removeEventListener("wagtail-block-ids:mode-on", listen);
+      globalThis.WagtailInspectMode = prevMode;
+    }
+  });
 });

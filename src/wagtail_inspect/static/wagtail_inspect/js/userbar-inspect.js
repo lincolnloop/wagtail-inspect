@@ -5,6 +5,12 @@
 (function () {
   "use strict";
 
+  // Page modes that highlight blocks (inspect, live comments) are exclusive: each
+  // announces itself on ``document`` and turns off when another one turns on.
+  // Contract documented in wagtail-block-ids.
+  const MODE_ON_EVENT = "wagtail-block-ids:mode-on";
+  const MODE_SOURCE = "wagtail-inspect";
+
   class InspectController {
     constructor(element, shadowRoot) {
       this.element = element;
@@ -18,6 +24,7 @@
       this.inspectMode = null;
 
       this.toggle = this.toggle.bind(this);
+      this.onOtherModeOn = this.onOtherModeOn.bind(this);
     }
 
     connect() {
@@ -27,9 +34,11 @@
       if (this.triggerTarget) {
         this.triggerTarget.addEventListener("click", this.toggle);
       }
+      document.addEventListener(MODE_ON_EVENT, this.onOtherModeOn);
     }
 
     disconnect() {
+      document.removeEventListener(MODE_ON_EVENT, this.onOtherModeOn);
       if (this.inspectMode) {
         this.inspectMode.deactivate();
         this.inspectMode = null;
@@ -80,6 +89,13 @@
       });
       this.inspectMode.activate();
       this.updateButtonState(true);
+      document.dispatchEvent(new CustomEvent(MODE_ON_EVENT, { detail: { source: MODE_SOURCE } }));
+    }
+
+    onOtherModeOn(event) {
+      if (event.detail?.source !== MODE_SOURCE && this.inspectMode?.active) {
+        this.deactivate();
+      }
     }
 
     deactivate() {
