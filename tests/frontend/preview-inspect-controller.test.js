@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterEach } from "bun:test";
+import { describe, it, expect, beforeAll, afterEach, spyOn } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -183,5 +183,40 @@ describe("PreviewInspectController.setupIframeLoadAction", () => {
     ctx.handleIframeLoad = () => {};
     ctx.setupIframeLoadAction();
     expect(current.getAttribute("data-action")).toContain("load->preview-inspect#handleIframeLoad");
+  });
+});
+
+describe("preview panel observer", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  const flushObserver = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("adds preview-inspect to a preview panel added to the page", async () => {
+    const panel = document.createElement("div");
+    panel.setAttribute("data-controller", "w-preview");
+    document.body.appendChild(panel);
+    await flushObserver();
+    expect(panel.getAttribute("data-controller")).toBe("w-preview preview-inspect");
+  });
+
+  it("adds preview-inspect to a preview panel nested in an added element", async () => {
+    const wrapper = document.createElement("section");
+    const panel = document.createElement("div");
+    panel.setAttribute("data-controller", "w-preview");
+    wrapper.appendChild(panel);
+    document.body.appendChild(wrapper);
+    await flushObserver();
+    expect(panel.getAttribute("data-controller")).toBe("w-preview preview-inspect");
+  });
+
+  it("does not query the whole document when unrelated nodes are added", async () => {
+    const queries = spyOn(document, "querySelectorAll");
+    document.body.appendChild(document.createTextNode("typing"));
+    document.body.appendChild(document.createElement("p"));
+    await flushObserver();
+    expect(queries).not.toHaveBeenCalled();
+    queries.mockRestore();
   });
 });

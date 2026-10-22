@@ -323,22 +323,28 @@ globalThis.WagtailInspectPreview = {
 
 window.wagtail.app.register("preview-inspect", PreviewInspectController);
 
-function attachToExistingPreviewController() {
-  const previewPanels = document.querySelectorAll('[data-controller*="w-preview"]');
+const PREVIEW_PANEL_SELECTOR = '[data-controller*="w-preview"]';
 
-  previewPanels.forEach((panel) => {
-    const controllers = panel.getAttribute("data-controller") || "";
+function markPreviewPanel(panel) {
+  const controllers = panel.getAttribute("data-controller") || "";
 
-    if (!controllers.includes("preview-inspect")) {
-      panel.setAttribute("data-controller", `${controllers} preview-inspect`.trim());
-    }
-  });
+  if (!controllers.includes("preview-inspect")) {
+    panel.setAttribute("data-controller", `${controllers} preview-inspect`.trim());
+  }
 }
 
+function attachToExistingPreviewController() {
+  document.querySelectorAll(PREVIEW_PANEL_SELECTOR).forEach(markPreviewPanel);
+}
+
+// Loaded on every admin page: look only inside added elements, so typing in the
+// editor (text nodes, rich-text churn) never re-queries the whole document.
 const observer = new MutationObserver((mutations) => {
   for (const mutation of mutations) {
-    if (mutation.addedNodes.length) {
-      attachToExistingPreviewController();
+    for (const node of mutation.addedNodes) {
+      if (node.nodeType !== Node.ELEMENT_NODE) continue;
+      if (node.matches(PREVIEW_PANEL_SELECTOR)) markPreviewPanel(node);
+      node.querySelectorAll(PREVIEW_PANEL_SELECTOR).forEach(markPreviewPanel);
     }
   }
 });
