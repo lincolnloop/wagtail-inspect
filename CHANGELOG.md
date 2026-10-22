@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Requires wagtail-block-ids 0.2.0. List children in the block map, and their marks on
+  the page, are named from their list (a `tags` list's items are "Tag", not "Item").
+- `flat_block_map_for_instance` reads the page's StreamFields through
+  wagtail-block-ids' `stream_values`.
+
 ## [0.2.0]
 
 ### Changed
