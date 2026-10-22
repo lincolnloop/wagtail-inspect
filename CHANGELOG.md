@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0]
+
 ### Fixed
 
 - The inspect highlight follows its block while the page scrolls instead of trailing
@@ -19,17 +21,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flash shows a steady tint instead of a fade.
 - Screen readers hear a block's name when it gets keyboard focus, not every time the
   pointer passes over one.
+- On Wagtail before 7.3 the **Inspect blocks** userbar item rendered empty and never
+  loaded its scripts. It is now left out there; inspect works from the editor's
+  preview panel. Standalone preview and live-page inspect need Wagtail 7.3+.
 
 ### Changed
 
-- The admin script that attaches inspect to the preview panel only looks inside newly
-  added elements, so typing in the editor no longer re-queries the whole page.
-- Preview block augmentation looks blocks up in one pass over the page instead of one
-  query per child block, and copes with block ids that aren't valid in a CSS selector.
-- Requires wagtail-block-ids 0.2.0. List children in the block map, and their marks on
-  the page, are named from their list (a `tags` list's items are "Tag", not "Item").
-- `flat_block_map_for_instance` reads the page's StreamFields through
-  wagtail-block-ids' `stream_values`.
+- Block marking (the `BoundBlock` / `ListValue` / `Page.serve` patches and the
+  StreamField walk) moved to the new
+  [wagtail-block-ids](https://github.com/lincolnloop/wagtail-block-ids) package
+  (0.2.0), which wagtail-inspect now depends on. wagtail-live-comments uses the same
+  core, so the two packages mark each block once instead of patching the same methods
+  twice. Preview and editors' live pages are still marked, with `display:contents`
+  wrappers for multi-root or text-only blocks.
+- List children in the block map, and their marks on the page, are named from their
+  list (a `tags` list's items are "Tag", not "Item").
 - The preview block map is kept per editor in Django's cache instead of a
   process-local dict, so one editor's unsaved preview no longer leaks into another's
   inspector, and every worker sees it when the cache backend is shared. Entries
@@ -37,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New `wagtail_inspect.block_map.block_map_for(page, user, *, live=False)` and
   `remember_preview(obj, user)` own the choice of map; `PageInspectView` delegates
   to them.
+- The admin script that attaches inspect to the preview panel only looks inside newly
+  added elements, so typing in the editor no longer re-queries the whole page.
+- Preview block augmentation looks blocks up in one pass over the page instead of one
+  query per child block, and copes with block ids that aren't valid in a CSS selector.
 
 ### Deprecated
 
@@ -45,25 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- `wagtail_inspect._preview_block_maps`.
-
-## [0.2.0]
-
-### Changed
-
-- Block marking (the `BoundBlock` / `ListValue` / `Page.serve` patches and the
-  StreamField walk) moved to the new
-  [wagtail-block-ids](https://github.com/lincolnloop/wagtail-block-ids) package, which
-  wagtail-inspect now depends on. wagtail-live-comments uses the same core, so the two
-  packages mark each block once instead of patching the same methods twice. Inspect's
-  behaviour is unchanged: preview and editors' live pages are marked, with
-  `display:contents` wrappers for multi-root or text-only blocks.
-- `blocks_for_field`, `resolve_block_type` and `resolve_block_label` are re-exported
-  from `wagtail_inspect.block_map`.
-
-### Removed
-
 - `wagtail_inspect.preview_active`. Use `wagtail_block_ids.is_marking()`.
+- `wagtail_inspect._preview_block_maps`.
 
 ## [0.1.1] - 2026-10-18
 

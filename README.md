@@ -8,7 +8,7 @@ There are two ways to use it: a crosshairs button in the **editor’s preview pa
 
 - Python 3.12+
 - Django 4.2+
-- Wagtail 5, 6, or 7
+- Wagtail 5, 6, or 7 (the **Inspect blocks** userbar item on standalone previews and live pages needs Wagtail 7.3+; on older versions inspect works from the editor's preview panel)
 - [wagtail-block-ids](https://github.com/lincolnloop/wagtail-block-ids) (installed as a dependency; it marks the rendered blocks)
 
 ## Installation

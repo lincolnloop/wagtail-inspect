@@ -6,11 +6,23 @@ from unittest.mock import MagicMock
 import pytest
 from django.urls import reverse
 
+from wagtail_inspect import wagtail_hooks
 from wagtail_inspect.wagtail_hooks import (
+    USERBAR_ITEMS_ARE_COMPONENTS,
     InspectBlocksUserbarItem,
     add_inspect_blocks_item,
     global_admin_js,
 )
+
+requires_component_userbar = pytest.mark.skipif(
+    not USERBAR_ITEMS_ARE_COMPONENTS, reason="userbar items are components from Wagtail 7.3"
+)
+
+
+@pytest.fixture(autouse=True)
+def _component_userbar(monkeypatch):
+    """Test the item rules on every Wagtail; the version gate has its own test."""
+    monkeypatch.setattr(wagtail_hooks, "USERBAR_ITEMS_ARE_COMPONENTS", True)
 
 
 class _Permissions:
@@ -89,6 +101,15 @@ def test_skips_item(request_kwargs, page):
     assert items == []
 
 
+def test_skips_item_before_wagtail_7_3(monkeypatch):
+    monkeypatch.setattr(wagtail_hooks, "USERBAR_ITEMS_ARE_COMPONENTS", False)
+    items = []
+
+    add_inspect_blocks_item(_request(is_preview=True), items, _Page())
+
+    assert items == []
+
+
 # ---------------------------------------------------------------------------
 # get_context_data / global_admin_js / URL name
 # ---------------------------------------------------------------------------
@@ -133,6 +154,7 @@ def test_userbar_item_media_loads_scripts_in_dependency_order():
     assert "wagtail_inspect/css/preview-inspect.css" in item.media._css["all"]
 
 
+@requires_component_userbar
 @pytest.mark.django_db
 def test_userbar_item_renders_no_inline_script(root_page, rf):
     # Inline scripts are blocked by a strict script-src CSP on preview responses.

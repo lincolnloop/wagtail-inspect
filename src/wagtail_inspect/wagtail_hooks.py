@@ -6,10 +6,17 @@ from django.templatetags.static import static
 from django.urls import path, reverse
 from django.utils.html import format_html, format_html_join
 from wagtail import hooks
+from wagtail.admin.ui.components import Component
 from wagtail.admin.userbar import BaseItem
 from wagtail.models import Page
 
 from . import inspect_live_pages_enabled, user_can_inspect
+
+# Wagtail 7.3 made userbar items components: ``template_name``, ``media`` and
+# ``render_html``. Older userbars ignore ``media``, so the item could only load its
+# scripts inline, which a strict script-src CSP blocks. There, inspect stays in the
+# editor's preview panel and the userbar item is left out.
+USERBAR_ITEMS_ARE_COMPONENTS = issubclass(BaseItem, Component)
 
 
 @hooks.register("insert_global_admin_css")
@@ -98,6 +105,9 @@ def register_inspect_api_url():
 
 @hooks.register("construct_wagtail_userbar")
 def add_inspect_blocks_item(request: HttpRequest, items: list, page: Page) -> None:
+    if not USERBAR_ITEMS_ARE_COMPONENTS:
+        return
+
     if not page or not page.id:
         return
 
