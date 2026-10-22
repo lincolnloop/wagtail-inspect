@@ -26,7 +26,10 @@ jobs:
       - name: Upload dist to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          # Not dist/*: uv build also writes dist/.gitignore.
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
 
       - name: Upload dist as workflow artifact
         uses: actions/upload-artifact@v6
