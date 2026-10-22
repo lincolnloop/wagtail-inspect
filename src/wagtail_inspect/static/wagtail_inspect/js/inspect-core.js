@@ -122,6 +122,7 @@ class InspectMode {
   _handleMouseOver(event) {
     const blockElement = this._findBlockElement(event.target);
     if (blockElement) {
+      // Pointer users see the label; announcing every hover floods screen readers.
       this._highlight(blockElement);
     }
   }
@@ -165,7 +166,7 @@ class InspectMode {
   _handleFocusIn(event) {
     const blockElement = this._findBlockElement(event.target);
     if (blockElement) {
-      this._highlight(blockElement);
+      this._highlight(blockElement, { announce: true });
     }
   }
 
@@ -220,7 +221,8 @@ class InspectMode {
     this._label = null;
   }
 
-  _highlight(element) {
+  /** *announce*: also tell screen readers (keyboard focus, not pointer hover). */
+  _highlight(element, { announce = false } = {}) {
     if (this._highlightedElement === element) return;
     if (!this._overlay) return;
 
@@ -234,7 +236,9 @@ class InspectMode {
     this._labelHeight = this._label.offsetHeight || 20;
     this._positionOverlay(element);
 
-    this._announce(blockLabel);
+    if (announce) {
+      this._announce(blockLabel);
+    }
   }
 
   /** One ancestor segment when nested, e.g. "Two Column › Hero". */

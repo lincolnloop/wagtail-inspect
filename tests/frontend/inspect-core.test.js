@@ -702,6 +702,37 @@ describe("InspectMode", () => {
       expect(rafSpy).toHaveBeenCalledTimes(1);
       jest.restoreAllMocks();
     });
+
+    function announcedBlock(eventType) {
+      mode = createMode();
+      mode.activate();
+      const el = blockEl("uuid-1", "Hero");
+      el.getBoundingClientRect = () => ({
+        x: 0,
+        y: 50,
+        width: 40,
+        height: 30,
+        top: 50,
+        right: 40,
+        bottom: 80,
+        left: 0,
+      });
+      document.body.appendChild(el);
+      const announce = spyOn(mode, "_announce");
+      el.dispatchEvent(new Event(eventType, { bubbles: true }));
+      const calls = announce.mock.calls.map(([message]) => message);
+      jest.restoreAllMocks();
+      el.remove();
+      return calls;
+    }
+
+    it("announces the block on keyboard focus", () => {
+      expect(announcedBlock("focusin")).toEqual(["Hero"]);
+    });
+
+    it("does not announce on pointer hover", () => {
+      expect(announcedBlock("mouseover")).toEqual([]);
+    });
   });
 
   // --- activateHighlightedBlock() ---
