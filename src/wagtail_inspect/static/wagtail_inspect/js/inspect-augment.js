@@ -38,17 +38,23 @@ function _findSiblingGroup(ancestor, count) {
  * @param {Object<string, { type?: string, label?: string, children?: string[] }>} blocks
  */
 function augmentPreviewBlocks(blocks) {
+  // One pass over the DOM, not a query per id: this runs on every preview refresh.
+  // Kept current as children are annotated, so later parents see them.
+  const marked = Array.from(document.querySelectorAll("[data-block-id]:not(template)"));
+  const elements = new Map();
+  for (const el of marked) {
+    if (!elements.has(el.dataset.blockId)) elements.set(el.dataset.blockId, el);
+  }
+
   for (const [parentId, parentInfo] of Object.entries(blocks)) {
     const children = parentInfo.children;
     if (!children || children.length === 0) continue;
 
-    const unannotated = children.filter(
-      (id) => !document.querySelector(`[data-block-id="${id}"]:not(template)`),
-    );
+    const unannotated = children.filter((id) => !elements.has(id));
 
     if (unannotated.length === 0) continue;
 
-    const parentEl = document.querySelector(`[data-block-id="${parentId}"]:not(template)`);
+    const parentEl = elements.get(parentId);
     if (!parentEl) continue;
 
     const candidates = _findSiblingGroup(parentEl, unannotated.length);
@@ -63,16 +69,17 @@ function augmentPreviewBlocks(blocks) {
       candidates[i].dataset.blockId = childId;
       candidates[i].dataset.blockType = childInfo.type || "";
       candidates[i].dataset.blockLabel = childInfo.label || "";
+      elements.set(childId, candidates[i]);
     }
   }
 
-  _repairEmptyLabels(blocks);
+  // Annotated children already carry type and label; only the marked ones need repair.
+  _repairEmptyLabels(blocks, marked);
 }
 
-function _repairEmptyLabels(blocks) {
-  for (const el of document.querySelectorAll("[data-block-id]:not(template)")) {
-    const id = el.dataset.blockId;
-    const info = blocks[id];
+function _repairEmptyLabels(blocks, marked) {
+  for (const el of marked) {
+    const info = blocks[el.dataset.blockId];
     if (!info) continue;
 
     if (!el.dataset.blockType && info.type) {

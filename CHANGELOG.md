@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The admin script that attaches inspect to the preview panel only looks inside newly
   added elements, so typing in the editor no longer re-queries the whole page.
+- Preview block augmentation looks blocks up in one pass over the page instead of one
+  query per child block, and copes with block ids that aren't valid in a CSS selector.
 - Requires wagtail-block-ids 0.2.0. List children in the block map, and their marks on
   the page, are named from their list (a `tags` list's items are "Tag", not "Item").
 - `flat_block_map_for_instance` reads the page's StreamFields through

@@ -172,3 +172,51 @@ describe("augmentPreviewBlocks with template markers", () => {
     expect(child.dataset.blockId).toBe(childId);
   });
 });
+
+describe("augmentPreviewBlocks lookup", () => {
+  const augment = (blocks) => window.WagtailInspectAugment.augmentPreviewBlocks(blocks);
+
+  it("treats children annotated for one parent as annotated for the next", () => {
+    const outer = makeAnnotatedBlock("outer", "section", "Section");
+    const inner = makeAnnotatedBlock("inner", "list", "List");
+    const li = document.createElement("li");
+    inner.appendChild(li);
+    outer.appendChild(inner);
+    document.body.appendChild(outer);
+
+    augment({
+      inner: { type: "list", label: "List", children: ["item"] },
+      outer: { type: "section", label: "Section", children: ["inner", "item"] },
+      item: { type: "item", label: "Item", children: [] },
+    });
+
+    expect(li.dataset.blockId).toBe("item");
+    expect(document.querySelectorAll('[data-block-id="item"]').length).toBe(1);
+  });
+
+  it("handles block ids that are not valid inside a CSS attribute selector", () => {
+    const id = 'quote"id';
+    const parent = makeAnnotatedBlock(id, "list", "List");
+    const li = document.createElement("li");
+    parent.appendChild(li);
+    document.body.appendChild(parent);
+
+    expect(() =>
+      augment({
+        [id]: { type: "list", label: "List", children: ["child"] },
+        child: { type: "item", label: "Item" },
+      }),
+    ).not.toThrow();
+    expect(li.dataset.blockId).toBe("child");
+  });
+
+  it("repairs every element rendered for the same block", () => {
+    const first = makeAnnotatedBlock("dup", "", "");
+    const second = makeAnnotatedBlock("dup", "", "");
+    document.body.append(first, second);
+
+    augment({ dup: { type: "hero", label: "Hero", children: [] } });
+
+    expect([first.dataset.blockLabel, second.dataset.blockLabel]).toEqual(["Hero", "Hero"]);
+  });
+});
