@@ -46,9 +46,9 @@ Repository = "https://github.com/lincolnloop/wagtail-inspect"
 Changelog = "https://github.com/lincolnloop/wagtail-inspect/blob/main/CHANGELOG.md"
 "Bug Tracker" = "https://github.com/lincolnloop/wagtail-inspect/issues"
 
-# Sibling checkout until wagtail-block-ids is released.
+# From GitHub until wagtail-block-ids 0.2.0 is on PyPI; then drop this block.
 [tool.uv.sources]
-wagtail-block-ids = { path = "../wagtail-block-ids", editable = true }
+wagtail-block-ids = { git = "https://github.com/lincolnloop/wagtail-block-ids", rev = "9c78df137ff0fd8f69baad972889c127d896c4a2" }
 
 [build-system]
 requires = ["uv_build>=0.10.11,<0.11.0"]
@@ -72,7 +72,7 @@ deps =
     wagtail5: wagtail>=5.0,<6.0
     wagtail6: wagtail>=6.0,<7.0
     wagtail7: wagtail>=7.0,<8.0
-    -e {toxinidir}/../wagtail-block-ids
+    wagtail-block-ids @ git+https://github.com/lincolnloop/wagtail-block-ids@9c78df137ff0fd8f69baad972889c127d896c4a2
     coverage[toml]>=7.0
     pytest>=8.0
     pytest-django>=4.0

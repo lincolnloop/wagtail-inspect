@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --extra testing
+          uv sync --extra testing --locked
           bun install --frozen-lockfile
 
       - name: Pre-commit (all files)
@@ -65,7 +65,7 @@ jobs:
       - uses: extractions/setup-just@v3
       - name: Install dependencies
         run: |
-          uv sync --extra testing
+          uv sync --extra testing --locked
           bun install --frozen-lockfile
       - name: Tox (multi Django/Wagtail)
         run: just tox
