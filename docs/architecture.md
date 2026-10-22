@@ -298,8 +298,8 @@ sequenceDiagram
   Ctrl->>Ctrl: deactivateInspectMode()
   Ctrl->>Admin: navigateToBlock(blockId)
   Admin->>Admin: expandCollapsedAncestors()
-  Admin->>Admin: scrollIntoView({ smooth })
-  Admin->>Admin: flashHighlight()
+  Admin->>Admin: scrollIntoView (smooth, or instant with reduced motion)
+  Admin->>Admin: flashHighlight() once the scroll ends
 ```
 
 ### Standalone Preview Page

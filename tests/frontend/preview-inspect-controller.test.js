@@ -220,3 +220,36 @@ describe("preview panel observer", () => {
     queries.mockRestore();
   });
 });
+
+describe("PreviewInspectController.navigateToBlock", () => {
+  const originalMatchMedia = globalThis.matchMedia;
+
+  afterEach(() => {
+    globalThis.matchMedia = originalMatchMedia;
+    document.body.innerHTML = "";
+  });
+
+  function navigate({ reduceMotion }) {
+    globalThis.matchMedia = () => ({ matches: reduceMotion });
+    const section = document.createElement("section");
+    section.id = "block-abc-section";
+    const scrolls = [];
+    section.scrollIntoView = (options) => scrolls.push(options.behavior);
+    document.body.appendChild(section);
+    PreviewInspectController().prototype.navigateToBlock.call({}, "abc");
+    return { section, scrolls };
+  }
+
+  it("scrolls smoothly and flashes once the scroll ends", () => {
+    const { section, scrolls } = navigate({ reduceMotion: false });
+    expect(scrolls).toEqual(["smooth"]);
+    expect(section.classList.contains("wagtail-inspect-flash")).toBe(false);
+    section.dispatchEvent(new Event("scrollend"));
+    expect(section.classList.contains("wagtail-inspect-flash")).toBe(true);
+  });
+
+  it("jumps without smooth scrolling under reduced motion", () => {
+    const { scrolls } = navigate({ reduceMotion: true });
+    expect(scrolls).toEqual(["instant"]);
+  });
+});

@@ -73,3 +73,62 @@ describe("WagtailInspectPreviewHelpers", () => {
     }
   });
 });
+
+describe("flashAfterScroll", () => {
+  const flashed = (el) => el.classList.contains("wagtail-inspect-flash");
+
+  it("flashes when the scroll settles, not before", () => {
+    const el = document.createElement("section");
+    document.body.appendChild(el);
+    try {
+      H().flashAfterScroll(el);
+      expect(flashed(el)).toBe(false);
+      el.dispatchEvent(new Event("scrollend"));
+      expect(flashed(el)).toBe(true);
+    } finally {
+      el.remove();
+    }
+  });
+
+  it("flashes once even if more scrolls end afterwards", () => {
+    const el = document.createElement("section");
+    document.body.appendChild(el);
+    try {
+      H().flashAfterScroll(el);
+      document.dispatchEvent(new Event("scrollend"));
+      el.classList.remove("wagtail-inspect-flash");
+      document.dispatchEvent(new Event("scrollend"));
+      expect(flashed(el)).toBe(false);
+    } finally {
+      el.remove();
+    }
+  });
+
+  it("falls back to a timer when no scrollend arrives", async () => {
+    const el = document.createElement("section");
+    document.body.appendChild(el);
+    try {
+      H().flashAfterScroll(el);
+      await new Promise((resolve) => setTimeout(resolve, 650));
+      expect(flashed(el)).toBe(true);
+    } finally {
+      el.remove();
+    }
+  });
+});
+
+describe("prefersReducedMotion", () => {
+  it("follows the prefers-reduced-motion media query", () => {
+    const original = globalThis.matchMedia;
+    try {
+      globalThis.matchMedia = (query) => ({
+        matches: query === "(prefers-reduced-motion: reduce)",
+      });
+      expect(H().prefersReducedMotion()).toBe(true);
+      globalThis.matchMedia = () => ({ matches: false });
+      expect(H().prefersReducedMotion()).toBe(false);
+    } finally {
+      globalThis.matchMedia = original;
+    }
+  });
+});

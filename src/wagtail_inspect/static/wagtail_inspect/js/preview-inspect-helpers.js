@@ -54,6 +54,30 @@
     );
   }
 
+  function prefersReducedMotion() {
+    return Boolean(global.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+  }
+
+  // Longest we wait for a smooth scroll to report it has finished (no scrollend
+  // support, or nothing needed scrolling).
+  var SCROLL_SETTLE_MS = 600;
+
+  /** Flash *element* once the scroll that brings it into view has settled. */
+  function flashAfterScroll(element) {
+    var done = false;
+    var timer = null;
+    function flash() {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      document.removeEventListener("scrollend", flash, true);
+      flashHighlight(element);
+    }
+    // Capture: scrollend does not bubble from a scrolling element to the document.
+    document.addEventListener("scrollend", flash, true);
+    timer = setTimeout(flash, SCROLL_SETTLE_MS);
+  }
+
   function scrollToHashBlock() {
     const hash = window.location.hash;
     if (!hash) return;
@@ -79,6 +103,8 @@
     expandPanelIfCollapsed: expandPanelIfCollapsed,
     expandCollapsedAncestors: expandCollapsedAncestors,
     flashHighlight: flashHighlight,
+    flashAfterScroll: flashAfterScroll,
+    prefersReducedMotion: prefersReducedMotion,
     scrollToHashBlock: scrollToHashBlock,
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

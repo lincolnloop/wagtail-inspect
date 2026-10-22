@@ -3,8 +3,13 @@
  * API block map + inspect-augment.js). Requires window.WagtailInspectPreviewHelpers.
  * @see https://docs.wagtail.org/en/stable/extending/extending_client_side.html
  */
-const { findEditorBlock, expandCollapsedAncestors, flashHighlight } =
-  window.WagtailInspectPreviewHelpers;
+const {
+  findEditorBlock,
+  expandCollapsedAncestors,
+  flashHighlight,
+  flashAfterScroll,
+  prefersReducedMotion,
+} = window.WagtailInspectPreviewHelpers;
 
 class PreviewInspectController extends window.StimulusModule.Controller {
   connect() {
@@ -311,8 +316,14 @@ class PreviewInspectController extends window.StimulusModule.Controller {
     const blockElement = findEditorBlock(blockId);
     if (blockElement) {
       expandCollapsedAncestors(blockElement);
-      blockElement.scrollIntoView({ behavior: "smooth" });
-      requestAnimationFrame(() => flashHighlight(blockElement));
+      if (prefersReducedMotion()) {
+        blockElement.scrollIntoView({ behavior: "instant" });
+        requestAnimationFrame(() => flashHighlight(blockElement));
+      } else {
+        // Flash once the section has arrived, not while it is still scrolling in.
+        blockElement.scrollIntoView({ behavior: "smooth" });
+        flashAfterScroll(blockElement);
+      }
     }
   }
 }

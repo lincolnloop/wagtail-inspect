@@ -437,8 +437,8 @@ Once the user clicks a block, `navigateToBlock(blockId)`:
 1. Sets the URL hash to `#block-{uuid}-section` via `history.pushState`
 2. Finds the editor element via `findEditorBlock(blockId)` -- tries `[data-contentpath]`, `#block-{id}-section`, then `[data-block-id]` as fallbacks
 3. Calls `expandCollapsedAncestors()` to walk up the DOM and expand any collapsed `section.w-panel` elements
-4. Scrolls the element into view with smooth animation
-5. Calls `flashHighlight()` to add a CSS class that triggers a background-color fade animation
+4. Scrolls the element into view: smoothly, or instantly under `prefers-reduced-motion` (`prefersReducedMotion()`)
+5. Flashes it with `flashHighlight()`: after the smooth scroll settles (`flashAfterScroll()` waits for `scrollend`, at most 600ms), or on the next frame after an instant jump
 
 #### Panel Expansion
 
@@ -596,21 +596,24 @@ This rule targets elements that have been made focusable by `InspectMode._enable
 
 ### 3. Flash animation
 
-A 2-second fade from Wagtail's secondary color to transparent, triggered when navigating to a block in the editor:
+A 1.5-second "you are here" tint in Wagtail's secondary color, triggered when navigating to a block in the editor. It holds for the first third, then fades. It is drawn as a full-size inset `box-shadow`, so it sits over the section's own background without replacing it and needs no `position: relative` on Wagtail's panels:
 
 ```css
 @keyframes wagtail-inspect-flash {
-  0% {
-    background-color: color-mix(in srgb, var(--w-color-secondary) 15%, transparent);
+  0%,
+  35% {
+    box-shadow: inset 0 0 0 100vmax color-mix(in srgb, var(--w-color-secondary) 15%, transparent);
   }
   100% {
-    background-color: unset;
+    box-shadow: inset 0 0 0 100vmax transparent;
   }
 }
 
 .wagtail-inspect-flash {
-  animation: wagtail-inspect-flash 2s ease-out forwards;
+  animation: wagtail-inspect-flash 1.5s cubic-bezier(0.32, 0.72, 0, 1);
 }
 ```
+
+Under `prefers-reduced-motion` the timing function is `step-end`: the tint stays steady for the duration, then disappears in one step.
 
 The `flashHighlight()` function adds and removes this class, using `void element.offsetWidth` to force a reflow between removal and re-addition (allowing the animation to replay).

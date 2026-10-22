@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The inspect highlight follows its block while the page scrolls instead of trailing
   behind it. The box is positioned with `transform` and snaps to each block (no
   glide between blocks), and repositioning no longer forces a layout each frame.
+- After a block click, the editor section flashes once the scroll to it has finished,
+  not while it is still moving into view. The flash no longer replaces the section's
+  background while it plays.
+- With `prefers-reduced-motion`, the jump to the editor section is instant and the
+  flash shows a steady tint instead of a fade.
 - Screen readers hear a block's name when it gets keyboard focus, not every time the
   pointer passes over one.
 

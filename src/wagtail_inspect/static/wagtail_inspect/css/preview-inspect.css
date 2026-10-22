@@ -106,17 +106,28 @@
   border: 0;
 }
 
-/* --- Flash highlight animation for navigated sections --- */
+/* --- Flash highlight for the editor section a block click lands on --- */
+/* A "you are here" tint: hold briefly, then fade. Drawn as an inset shadow so it
+   sits over the section's own background without replacing it, and without the
+   position: relative an ::after would need on Wagtail's panels. */
 
 @keyframes wagtail-inspect-flash {
-  0% {
-    background-color: color-mix(in srgb, var(--w-color-secondary) 15%, transparent);
+  0%,
+  35% {
+    box-shadow: inset 0 0 0 100vmax color-mix(in srgb, var(--w-color-secondary) 15%, transparent);
   }
   100% {
-    background-color: unset;
+    box-shadow: inset 0 0 0 100vmax transparent;
   }
 }
 
 .wagtail-inspect-flash {
-  animation: wagtail-inspect-flash 2s ease-out forwards;
+  animation: wagtail-inspect-flash 1.5s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Same tint, no fade: shown for the duration, then gone in one step. */
+  .wagtail-inspect-flash {
+    animation-timing-function: step-end;
+  }
 }
