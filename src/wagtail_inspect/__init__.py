@@ -1,6 +1,6 @@
 """Wagtail Inspect — preview block inspection."""
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 
 def inspect_live_pages_enabled() -> bool:

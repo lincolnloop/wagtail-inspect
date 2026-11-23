@@ -77,5 +77,5 @@ src/wagtail_inspect/
 
 - Python 3.12+ (`requires-python` in `pyproject.toml`)
 - Django 4.2+
-- Wagtail 5.0+ (tox matrix in `pyproject.toml` covers 5.x, 6.x, and 7.x; wagtail-block-ids warns at startup outside its `TESTED_WAGTAIL_VERSIONS`)
+- Wagtail 5.0+ (tox matrix in `pyproject.toml` covers 5.x, 6.x, 7.x, and 8.x; wagtail-block-ids warns at startup outside its `TESTED_WAGTAIL_VERSIONS`)
 - [wagtail-block-ids](https://github.com/lincolnloop/wagtail-block-ids) 0.2.0+ (installed as a dependency)

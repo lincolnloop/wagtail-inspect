@@ -59,7 +59,7 @@ graph TD
 ## `__init__.py` -- Package Initialization
 
 ```python
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 
 def inspect_live_pages_enabled() -> bool:

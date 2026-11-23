@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1]
+
+### Changed
+
+- Supports Wagtail 8.0 and 8.1 (`wagtail>=5.0,<9`). No code changes were needed:
+  the 8.0 removals (two-argument `construct_wagtail_userbar` hooks, userbar items
+  with a `render` method) don't affect this package. Wagtail 8 requires Django 5.2+,
+  so the test matrix covers it on Django 5.2 and 6.0.
+
 ## [0.2.0]
 
 ### Fixed
@@ -92,6 +101,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preview-only DOM attributes (`data-block-id`, `data-block-type`, `data-block-label`) and admin JSON API for the block map.
 - Support for Django 4.2+ and Wagtail 5, 6, and 7 (Python 3.12+).
 
-[Unreleased]: https://github.com/lincolnloop/wagtail-inspect/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/lincolnloop/wagtail-inspect/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/lincolnloop/wagtail-inspect/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/lincolnloop/wagtail-inspect/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/lincolnloop/wagtail-inspect/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/lincolnloop/wagtail-inspect/releases/tag/v0.1.0

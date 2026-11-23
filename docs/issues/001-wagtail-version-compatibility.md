@@ -17,7 +17,7 @@ Inspect depends on monkey-patches of Wagtail APIs that are not guaranteed as sta
 
 These are implementation details of Wagtail's block rendering and preview pipeline. They may change signatures, move modules, or be removed entirely in future Wagtail releases without deprecation warnings.
 
-The `README.md` states compatibility with Wagtail 5.x, 6.x, and 7.x. **CI** runs backend + frontend + E2E tests on every push/PR; a full version matrix is also defined under `[tool.tox]` in `pyproject.toml` (`just tox` / `just tox-env …`).
+The `README.md` states compatibility with Wagtail 5.x, 6.x, 7.x, and 8.x. **CI** runs backend + frontend + E2E tests on every push/PR; a full version matrix is also defined under `[tool.tox]` in `pyproject.toml` (`just tox` / `just tox-env …`).
 
 **Improvement over previous approach:** The original four patches targeted `IncludeBlockNode.render`, `StreamValue.render_as_block`, `StreamValue.__html__`, and `StreamChild.render` -- lower-level, more volatile internals. The current approach centres on `BoundBlock` (two methods), adds `ListValue.__iter__` for list-block iteration, and uses `PreviewableMixin.make_preview_request` for preview lifecycle -- generally more stable than the earlier set.
 

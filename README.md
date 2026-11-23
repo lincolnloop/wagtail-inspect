@@ -8,7 +8,7 @@ There are two ways to use it: a crosshairs button in the **editor’s preview pa
 
 - Python 3.12+
 - Django 4.2+
-- Wagtail 5, 6, or 7 (the **Inspect blocks** userbar item on standalone previews and live pages needs Wagtail 7.3+; on older versions inspect works from the editor's preview panel)
+- Wagtail 5, 6, 7, or 8 (the **Inspect blocks** userbar item on standalone previews and live pages needs Wagtail 7.3+; on older versions inspect works from the editor's preview panel)
 - [wagtail-block-ids](https://github.com/lincolnloop/wagtail-block-ids) (installed as a dependency; it marks the rendered blocks)
 
 ## Installation
@@ -24,14 +24,14 @@ To use **wagtail-inspect** in your own Wagtail project (not the demo `testprojec
 ```bash
 pip install \
   "wagtail-block-ids @ git+https://github.com/lincolnloop/wagtail-block-ids@v0.2.0" \
-  "wagtail-inspect @ git+https://github.com/lincolnloop/wagtail-inspect@v0.2.0"
+  "wagtail-inspect @ git+https://github.com/lincolnloop/wagtail-inspect@v0.2.1"
 ```
 
 The same two lines work in a `requirements.txt`. In a [uv](https://docs.astral.sh/uv/) project:
 
 ```bash
 uv add git+https://github.com/lincolnloop/wagtail-block-ids --tag v0.2.0
-uv add git+https://github.com/lincolnloop/wagtail-inspect --tag v0.2.0
+uv add git+https://github.com/lincolnloop/wagtail-inspect --tag v0.2.1
 ```
 
 **Wheel from a GitHub Release** — Each [release](https://github.com/lincolnloop/wagtail-inspect/releases) includes build assets: download **`wagtail_inspect-<version>-py3-none-any.whl`** (or the `.tar.gz` sdist), and install it with wagtail-block-ids from its tag as above:
@@ -39,7 +39,7 @@ uv add git+https://github.com/lincolnloop/wagtail-inspect --tag v0.2.0
 ```bash
 pip install \
   "wagtail-block-ids @ git+https://github.com/lincolnloop/wagtail-block-ids@v0.2.0" \
-  /path/to/wagtail_inspect-0.2.0-py3-none-any.whl
+  /path/to/wagtail_inspect-0.2.1-py3-none-any.whl
 ```
 
 **Wheel from CI** — Successful runs of the **CI** workflow upload a **`dist`** artifact containing the same wheel and sdist; download it from the run’s **Summary** tab if you need a build that is not yet tagged.
