@@ -33,7 +33,7 @@ dependencies = ["django>=4.2", "wagtail>=5.0,<9", "wagtail-block-ids>=0.2.0"]
 testing = [
   "coverage[toml]>=7.0",
   "djlint>=1.36.4",
-  "playwright>=1.40",
+  "playwright>=1.62",
   "pre-commit>=4.0",
   "pytest>=8.0",
   "pytest-django>=4.0",
